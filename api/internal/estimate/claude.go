@@ -62,8 +62,8 @@ func (c *Claude) Priced() bool { return c.priced }
 // answer is billed like any other.
 func (c *Claude) Estimate(ctx context.Context, in Input) (Result, error) {
 	var content []anthropic.ContentBlockParamUnion
-	if len(in.Photo) > 0 {
-		content = append(content, anthropic.NewImageBlockBase64(in.PhotoMIME, base64.StdEncoding.EncodeToString(in.Photo)))
+	for _, photo := range in.Photos {
+		content = append(content, anthropic.NewImageBlockBase64(photo.MIME, base64.StdEncoding.EncodeToString(photo.Data)))
 	}
 	content = append(content, anthropic.NewTextBlock(userText(in)))
 

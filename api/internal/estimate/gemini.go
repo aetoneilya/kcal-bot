@@ -35,8 +35,8 @@ func (g *Gemini) Priced() bool { return false }
 
 func (g *Gemini) Estimate(ctx context.Context, in Input) (Result, error) {
 	var parts []*genai.Part
-	if len(in.Photo) > 0 {
-		parts = append(parts, genai.NewPartFromBytes(in.Photo, in.PhotoMIME))
+	for _, photo := range in.Photos {
+		parts = append(parts, genai.NewPartFromBytes(photo.Data, photo.MIME))
 	}
 	parts = append(parts, genai.NewPartFromText(userText(in)))
 

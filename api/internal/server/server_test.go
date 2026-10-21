@@ -303,8 +303,8 @@ func TestAnalyzeReturnsDraftAndCountsAllowance(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &draft); err != nil || len(draft.Items) != 1 {
 		t.Fatalf("bad draft: %v %s", err, w.Body)
 	}
-	if est.last.PhotoMIME != "image/jpeg" || est.last.Note != "без масла" {
-		t.Fatalf("estimator got %q / %q", est.last.PhotoMIME, est.last.Note)
+	if len(est.last.Photos) != 1 || est.last.Photos[0].MIME != "image/jpeg" || est.last.Note != "без масла" {
+		t.Fatalf("estimator got %+v / %q", est.last.Photos, est.last.Note)
 	}
 
 	body, ct = analyzeForm(t, nil, "яблоко")
@@ -366,6 +366,29 @@ func TestAnalyzeFailureRefundsAllowance(t *testing.T) {
 	}
 	if est.calls != 2 {
 		t.Fatalf("a failed call must be refunded so the retry reaches the model, calls=%d", est.calls)
+	}
+}
+
+func TestAnalyzeTakesSeveralPhotosUpToTheCap(t *testing.T) {
+	est := &stubEstimator{}
+	h := newTestServer(t, est, Config{})
+	form := func(n int) (io.Reader, string) {
+		var buf bytes.Buffer
+		mw := multipart.NewWriter(&buf)
+		for i := 0; i < n; i++ {
+			part, _ := mw.CreateFormFile("photo", fmt.Sprintf("p%d.jpg", i))
+			part.Write(tinyJPEG)
+		}
+		mw.Close()
+		return &buf, mw.FormDataContentType()
+	}
+	body, ct := form(3)
+	if w := do(t, h, 7, "POST", "/api/analyze", body, ct); w.Code != http.StatusOK || len(est.last.Photos) != 3 {
+		t.Fatalf("three photos: %d, estimator got %d", w.Code, len(est.last.Photos))
+	}
+	body, ct = form(4)
+	if w := do(t, h, 7, "POST", "/api/analyze", body, ct); w.Code != http.StatusBadRequest {
+		t.Fatalf("four photos must be refused, got %d", w.Code)
 	}
 }
 

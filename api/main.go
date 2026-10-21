@@ -280,7 +280,10 @@ func runProbe(path, note string, devMode bool) error {
 		return err
 	}
 	started := time.Now()
-	result, err := estimator.Estimate(ctx, estimate.Input{Photo: photo, PhotoMIME: http.DetectContentType(photo), Note: note})
+	result, err := estimator.Estimate(ctx, estimate.Input{
+		Photos: []estimate.Photo{{Data: photo, MIME: http.DetectContentType(photo)}},
+		Note:   note,
+	})
 	fmt.Printf("estimator: %s\nms: %d\ntokens in/out: %d/%d\nusd: %.4f\nraw:\n%s\n",
 		estimator.Name(), time.Since(started).Milliseconds(), result.Usage.Input, result.Usage.Output, result.Cost, result.Raw)
 	return err

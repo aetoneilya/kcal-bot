@@ -9,47 +9,62 @@
   let {
     onDraft,
     onManual,
-  }: { onDraft: (draft: Draft, note: string, photo: Blob | null) => void; onManual: () => void } = $props();
+  }: { onDraft: (draft: Draft, note: string, photos: Blob[]) => void; onManual: () => void } = $props();
 
-  let photo = $state<Blob | null>(null);
-  let preview = $state("");
+  // One meal may carry a few photos: the plate, another angle, the label.
+  const MAX_PHOTOS = 3;
+  let photos = $state<{ blob: Blob; url: string }[]>([]);
+  let active = $state(0);
   let note = $state("");
   let busy = $state(false);
   let error = $state("");
   let left = $state<number | null>(null);
 
-  const ready = $derived(Boolean(photo || note.trim()));
+  const ready = $derived(Boolean(photos.length || note.trim()));
+  const preview = $derived(photos[active]?.url ?? "");
+  const room = $derived(MAX_PHOTOS - photos.length);
 
   onMount(() => {
     api
       .me()
       .then((me) => (left = me.analysesLeft))
       .catch(() => {});
-    return () => preview && URL.revokeObjectURL(preview);
+    return () => photos.forEach((p) => URL.revokeObjectURL(p.url));
   });
 
   async function pick(event: Event) {
     const input = event.currentTarget as HTMLInputElement;
-    const file = input.files?.[0];
+    const files = [...(input.files ?? [])].slice(0, room);
     input.value = ""; // picking the same photo again still fires change
-    if (!file) return;
+    if (!files.length) return;
     error = "";
-    try {
-      photo = await downscale(file);
-    } catch {
-      photo = file; // the server sniffs the type; let it decide
+    for (const file of files) {
+      let blob: Blob;
+      try {
+        blob = await downscale(file);
+      } catch {
+        blob = file; // the server sniffs the type; let it decide
+      }
+      photos.push({ blob, url: URL.createObjectURL(blob) });
     }
-    if (preview) URL.revokeObjectURL(preview);
-    preview = URL.createObjectURL(photo);
+    active = photos.length - 1;
     haptic();
+  }
+
+  function remove(index: number) {
+    haptic();
+    URL.revokeObjectURL(photos[index].url);
+    photos.splice(index, 1);
+    active = Math.min(active, Math.max(photos.length - 1, 0));
   }
 
   async function analyze() {
     haptic("medium");
     busy = true;
     error = "";
+    const blobs = photos.map((p) => p.blob);
     try {
-      onDraft(await api.analyze(photo, note), note, photo);
+      onDraft(await api.analyze(blobs, note), note, blobs);
     } catch (e) {
       error = (e as Error).message;
     } finally {
@@ -70,10 +85,7 @@
           <span class="caption"><Kitten size={22} peek />Разглядываю тарелку…</span>
         </div>
       {:else}
-        <label class="retake">
-          <Icon name="camera" size={18} />Переснять
-          <input type="file" accept="image/*" capture="environment" onchange={pick} hidden />
-        </label>
+        <button class="drop" onclick={() => remove(active)} aria-label="Убрать это фото"><Icon name="x" size={18} /></button>
       {/if}
     {:else}
       <label class="shoot">
@@ -85,10 +97,29 @@
     {/if}
   </div>
 
+  {#if photos.length}
+    <div class="thumbs">
+      {#each photos as p, i (p.url)}
+        <button class="thumb" class:on={i === active} onclick={() => (active = i)} disabled={busy} aria-label={`Фото ${i + 1}`}>
+          <img src={p.url} alt="" />
+        </button>
+      {/each}
+      {#if room > 0}
+        <label class="thumb add" class:off={busy}>
+          <Icon name="plus" size={22} />
+          <input type="file" accept="image/*" capture="environment" onchange={pick} hidden disabled={busy} />
+        </label>
+      {/if}
+    </div>
+    {#if photos.length === 1}
+      <p class="hint tip">Есть упаковка? Добавь фото этикетки — возьму БЖУ с неё.</p>
+    {/if}
+  {/if}
+
   <div class="alt">
-    <label class="ghost" class:off={busy}>
+    <label class="ghost" class:off={busy || room === 0}>
       <Icon name="image" />Из галереи
-      <input type="file" accept="image/*" onchange={pick} hidden disabled={busy} />
+      <input type="file" accept="image/*" multiple onchange={pick} hidden disabled={busy || room === 0} />
     </label>
     <button class="ghost" onclick={onManual} disabled={busy}><Icon name="pencil" />Вручную</button>
   </div>
@@ -200,21 +231,63 @@
     transform: scale(1.02);
   }
 
-  .retake {
+  .drop {
     position: absolute;
     right: 10px;
-    bottom: 10px;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    min-height: 36px;
-    padding: 0 12px;
-    border-radius: 18px;
+    top: 10px;
+    width: 36px;
+    height: 36px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
     background: rgb(0 0 0 / 0.55);
     color: #fff;
-    font-size: 14px;
-    font-weight: 500;
+  }
+
+  .thumbs {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .thumb {
+    width: 64px;
+    height: 64px;
+    flex: none;
+    border-radius: 12px;
+    overflow: hidden;
+    display: grid;
+    place-items: center;
+    background: var(--card);
+    box-shadow: inset 0 0 0 1px var(--line);
     cursor: pointer;
+  }
+
+  .thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0.6;
+    transition: opacity 0.15s;
+  }
+
+  .thumb.on {
+    box-shadow: 0 0 0 2px var(--accent);
+  }
+
+  .thumb.on img {
+    opacity: 1;
+  }
+
+  .thumb.add {
+    color: var(--accent);
+    box-shadow: inset 0 0 0 1.5px var(--line-strong);
+    background: transparent;
+  }
+
+  .tip {
+    margin: 8px 4px 0;
+    font-size: 13px;
   }
 
   /* The one authored moment: a scan line passing over the plate while the model looks. */

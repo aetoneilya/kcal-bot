@@ -35,7 +35,7 @@ func TestPortionsFoldRepeatsIntoMedianByFrequency(t *testing.T) {
 
 func TestUserTextCarriesAnswerAndHistory(t *testing.T) {
 	text := userText(Input{
-		Photo:    []byte{1},
+		Photos:   []Photo{{Data: []byte{1}, MIME: "image/jpeg"}},
 		Question: "Жарили на масле?",
 		Answer:   "Без масла",
 		History:  []Portion{{Name: "гречка", Grams: 180, Kcal100: 110, Times: 4}},
@@ -63,5 +63,12 @@ func TestSchemaKeepsItsOrder(t *testing.T) {
 	compact, _ := json.Marshal(draftSchema)
 	if strings.Index(string(compact), `"name"`) > strings.Index(string(compact), `"carbs100"`) {
 		t.Fatalf("marshalling must keep the order, got %s", compact)
+	}
+}
+
+func TestUserTextCountsPhotosOfOneMeal(t *testing.T) {
+	two := userText(Input{Photos: []Photo{{}, {}}})
+	if !strings.Contains(two, "the 2 photos (one meal)") {
+		t.Fatalf("several photos must be named as one meal:\n%s", two)
 	}
 }

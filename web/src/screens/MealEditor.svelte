@@ -12,9 +12,9 @@
     meal,
     draft,
     note = "",
-    photo = null,
+    photos = [],
     onDone,
-  }: { day: Date; meal?: Meal; draft?: Draft; note?: string; photo?: Blob | null; onDone: () => void } = $props();
+  }: { day: Date; meal?: Meal; draft?: Draft; note?: string; photos?: Blob[]; onDone: () => void } = $props();
 
   // A new meal on today defaults to now; on a past day, to noon.
   function initialTime(): string {
@@ -48,7 +48,7 @@
     rethinking = true;
     error = "";
     try {
-      const next = await api.analyze(photo, note, { question, answer: reply });
+      const next = await api.analyze(photos, note, { question, answer: reply });
       title = next.title || title;
       if (next.items.length) items = next.items.map((i) => ({ ...i }));
       question = next.question;

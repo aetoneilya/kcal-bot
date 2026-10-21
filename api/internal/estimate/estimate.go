@@ -18,11 +18,20 @@ import (
 	"github.com/aetoneilya/kcal-bot/api/internal/model"
 )
 
-// Input is one request: a photo, a note, or both.
+// MaxPhotos is how many photos one meal may carry: the plate, another angle,
+// the packaging with its label.
+const MaxPhotos = 3
+
+// Photo is one uploaded image, already checked to be JPEG, PNG or WebP.
+type Photo struct {
+	Data []byte
+	MIME string
+}
+
+// Input is one request: photos of one meal, a note, or both.
 type Input struct {
-	Photo     []byte
-	PhotoMIME string
-	Note      string
+	Photos []Photo
+	Note   string
 	// Usual portions from this person's own saved meals; may be empty.
 	History []Portion
 	// Set on a re-estimate: the question the model asked last time and the
@@ -31,7 +40,7 @@ type Input struct {
 	Answer   string
 }
 
-func (in Input) Empty() bool { return len(in.Photo) == 0 && strings.TrimSpace(in.Note) == "" }
+func (in Input) Empty() bool { return len(in.Photos) == 0 && strings.TrimSpace(in.Note) == "" }
 
 // Portion is how much of one food a person usually eats, from meals they saved.
 type Portion struct {
@@ -116,7 +125,9 @@ type Result struct {
 // a refusal, a truncated answer, or JSON that does not match the schema.
 var ErrUnusable = errors.New("the model returned no usable estimate")
 
-const systemPrompt = `You estimate the nutrition of a meal for a food diary. You get a photo of the meal, a short note from the person, or both.
+const systemPrompt = `You estimate the nutrition of a meal for a food diary. You get photos of the meal, a short note from the person, or both.
+
+Several photos always show one meal: the plate from another angle, a close-up, or the packaging and its label. Combine them and count every food once — a food seen in two photos is one item.
 
 Break the meal into its distinct components, one item per component the person could weigh separately (e.g. "гречка", "куриное бедро", "огурец"). For each item give:
 - name: short, in Russian, specific enough to look up (prefer "куриное бедро запечённое без кожи" over "мясо");
@@ -150,13 +161,17 @@ If the image is not food, return no items and put a short explanation in questio
 func userText(in Input) string {
 	var b strings.Builder
 	note := strings.TrimSpace(in.Note)
+	photos := "the photo"
+	if len(in.Photos) > 1 {
+		photos = fmt.Sprintf("the %d photos (one meal)", len(in.Photos))
+	}
 	switch {
-	case len(in.Photo) == 0:
+	case len(in.Photos) == 0:
 		b.WriteString("No photo. The person describes the meal:\n" + note)
 	case note == "":
-		b.WriteString("Estimate the meal in the photo. The person added no note.")
+		b.WriteString("Estimate the meal in " + photos + ". The person added no note.")
 	default:
-		b.WriteString("Estimate the meal in the photo. The person's note:\n" + note)
+		b.WriteString("Estimate the meal in " + photos + ". The person's note:\n" + note)
 	}
 	if in.Question != "" && in.Answer != "" {
 		fmt.Fprintf(&b, "\n\nYou asked earlier: %s\nThe person answered: %s", in.Question, in.Answer)

@@ -16,7 +16,7 @@
     | { name: "capture" }
     | { name: "profile" }
     | { name: "calendar" }
-    | { name: "editor"; meal?: Meal; draft?: Draft; note?: string; photo?: Blob | null };
+    | { name: "editor"; meal?: Meal; draft?: Draft; note?: string; photos?: Blob[] };
 
   let view = $state<View>({ name: "today" });
   // The day being viewed; a new meal is filed under it.
@@ -69,7 +69,7 @@
     />
   {:else if view.name === "capture"}
     <Capture
-      onDraft={(draft, note, photo) => (view = { name: "editor", draft, note, photo })}
+      onDraft={(draft, note, photos) => (view = { name: "editor", draft, note, photos })}
       onManual={() => (view = { name: "editor" })}
     />
   {:else if view.name === "profile"}
@@ -81,7 +81,7 @@
       }}
     />
   {:else}
-    <MealEditor {day} meal={view.meal} draft={view.draft} note={view.note} photo={view.photo} onDone={home} />
+    <MealEditor {day} meal={view.meal} draft={view.draft} note={view.note} photos={view.photos} onDone={home} />
   {/if}
 </main>
 

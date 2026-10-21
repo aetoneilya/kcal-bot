@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime/multipart"
 	"net/http"
 	"strconv"
 	"strings"
@@ -206,22 +207,23 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if file, header, err := r.FormFile("photo"); err == nil {
-		defer file.Close()
-		in.Photo, err = io.ReadAll(file)
+	headers := r.MultipartForm.File["photo"]
+	if len(headers) > estimate.MaxPhotos {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("at most %d photos per meal", estimate.MaxPhotos))
+		return
+	}
+	for _, header := range headers {
+		photo, err := readPhoto(header)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "could not read the photo")
 			return
 		}
-		in.PhotoMIME = http.DetectContentType(in.Photo)
-		if !supportedImage(in.PhotoMIME) {
-			s.cfg.Log.Warn("rejected upload", "type", in.PhotoMIME, "declared", header.Header.Get("Content-Type"))
+		if !supportedImage(photo.MIME) {
+			s.cfg.Log.Warn("rejected upload", "type", photo.MIME, "declared", header.Header.Get("Content-Type"))
 			writeError(w, http.StatusUnsupportedMediaType, "the photo must be JPEG, PNG or WebP")
 			return
 		}
-	} else if !errors.Is(err, http.ErrMissingFile) {
-		writeError(w, http.StatusBadRequest, "could not read the photo")
-		return
+		in.Photos = append(in.Photos, photo)
 	}
 	if in.Empty() {
 		writeError(w, http.StatusBadRequest, "send a photo, a description, or both")
@@ -282,7 +284,7 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.cfg.Log.Info("estimated", "estimator", s.estimator.Name(), "user", user.ID,
-		"items", len(draft.Items), "photo_bytes", len(in.Photo), "ms", time.Since(started).Milliseconds(),
+		"items", len(draft.Items), "photos", len(in.Photos), "ms", time.Since(started).Milliseconds(),
 		"usd", fmt.Sprintf("%.4f", result.Cost), "tokens_in", result.Usage.Input, "tokens_out", result.Usage.Output,
 		"history", len(in.History))
 	if len(draft.Items) == 0 {
@@ -316,6 +318,21 @@ func (s *Server) recordSpend(ctx context.Context, user model.User, before, total
 	if limit := s.cfg.TotalDailySpendLimit; limit > 0 && totalBefore < limit && totalBefore+cost >= limit {
 		s.cfg.Notifier.TotalSpendLimitReached(ctx, totalBefore+cost, limit)
 	}
+}
+
+// readPhoto reads one uploaded file and sniffs its type from the bytes; the
+// declared Content-Type is the client's word and is not trusted.
+func readPhoto(header *multipart.FileHeader) (estimate.Photo, error) {
+	file, err := header.Open()
+	if err != nil {
+		return estimate.Photo{}, err
+	}
+	defer file.Close()
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return estimate.Photo{}, err
+	}
+	return estimate.Photo{Data: data, MIME: http.DetectContentType(data)}, nil
 }
 
 func supportedImage(mime string) bool {

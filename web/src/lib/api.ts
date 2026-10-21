@@ -86,9 +86,9 @@ export const api = {
   me: () => request<Me>("/api/me"),
   saveProfile: (profile: Profile) => request<Profile>("/api/profile", json("PUT", profile)),
 
-  analyze(photo: Blob | null, note: string, clarification?: Clarification): Promise<Draft> {
+  analyze(photos: Blob[], note: string, clarification?: Clarification): Promise<Draft> {
     const form = new FormData();
-    if (photo) form.append("photo", photo, "meal.jpg");
+    photos.forEach((photo, i) => form.append("photo", photo, `meal-${i + 1}.jpg`));
     if (note.trim()) form.append("note", note.trim());
     if (clarification) {
       form.append("question", clarification.question);
