@@ -159,7 +159,7 @@
   .screen {
     display: flex;
     flex-direction: column;
-    padding-bottom: calc(16px + var(--safe-bottom));
+    padding-bottom: 16px;
   }
 
   h1 {

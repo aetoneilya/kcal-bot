@@ -14,9 +14,6 @@
     onAdd,
     onOpen,
     onGoal,
-    onCalendar,
-    onWeight,
-    weightKg,
   }: {
     day: Date;
     target: Targets | null;
@@ -24,9 +21,6 @@
     onAdd: () => void;
     onOpen: (meal: Meal) => void;
     onGoal: () => void;
-    onCalendar: () => void;
-    onWeight: () => void;
-    weightKg: number | null;
   } = $props();
 
   let meals = $state<Meal[]>([]);
@@ -104,10 +98,10 @@
     <button class="nav" onclick={() => shift(-1)} aria-label="Предыдущий день">
       <Icon name="chevron-left" size={24} />
     </button>
-    <button class="heading" onclick={onCalendar} aria-label="Открыть календарь">
-      <h1 class="round">{title}<span class="chev"><Icon name="chevron-down" size={18} /></span></h1>
+    <div class="heading">
+      <h1 class="round">{title}</h1>
       {#if subtitle}<p class="hint">{subtitle}</p>{/if}
-    </button>
+    </div>
     <button class="nav" onclick={() => shift(1)} disabled={isToday} aria-label="Следующий день">
       <Icon name="chevron-right" size={24} />
     </button>
@@ -156,12 +150,6 @@
       </button>
     {/if}
   </section>
-
-  <button class="weight" onclick={onWeight}>
-    <span>Вес</span>
-    <span class="num">{weightKg ? `${weightKg.toLocaleString("ru-RU", { maximumFractionDigits: 1 })} кг` : "записать"}</span>
-    <Icon name="chevron-right" size={18} />
-  </button>
 
   <h2 class="section-title">
     <span>Приёмы пищи</span>
@@ -235,19 +223,6 @@
 
   .heading {
     text-align: center;
-    border-radius: 12px;
-    padding: 2px 8px;
-  }
-
-  .heading:active {
-    background: var(--field);
-  }
-
-  .chev {
-    display: inline-flex;
-    vertical-align: middle;
-    margin-left: 4px;
-    color: var(--hint);
   }
 
   h1 {
@@ -283,31 +258,7 @@
 
   .summary {
     padding: 18px 16px 14px;
-    margin-bottom: 8px;
-  }
-
-  .weight {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-height: 48px;
     margin-bottom: 24px;
-    padding: 0 12px 0 16px;
-    border-radius: var(--r);
-    background: var(--card);
-  }
-
-  .weight span:first-child {
-    flex: 1;
-    text-align: left;
-  }
-
-  .weight .num {
-    color: var(--hint);
-  }
-
-  .weight:active {
-    background: color-mix(in srgb, var(--hint) 10%, var(--card));
   }
 
   .top {

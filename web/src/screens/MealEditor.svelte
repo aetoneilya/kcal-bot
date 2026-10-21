@@ -14,7 +14,7 @@
     note = "",
     photos = [],
     onDone,
-  }: { day: Date; meal?: Meal; draft?: Draft; note?: string; photos?: Blob[]; onDone: () => void } = $props();
+  }: { day: Date; meal?: Meal; draft?: Draft; note?: string; photos?: Blob[]; onDone: (notice?: string) => void } = $props();
 
   // A new meal on today defaults to now; on a past day, to noon.
   function initialTime(): string {
@@ -93,7 +93,7 @@
       if (meal) await api.updateMeal(meal.id, body);
       else await api.createMeal(body);
       hapticSuccess();
-      onDone();
+      onDone(meal ? "Сохранено" : "Записано");
     } catch (e) {
       error = (e as Error).message;
     } finally {
@@ -106,7 +106,7 @@
     busy = true;
     try {
       await api.deleteMeal(meal.id);
-      onDone();
+      onDone("Удалено");
     } catch (e) {
       error = (e as Error).message;
       busy = false;

@@ -243,13 +243,18 @@ input::-webkit-inner-spin-button {
 /* The bottom bar every screen pins its main action into. */
 .dock {
   position: sticky;
-  bottom: 0;
+  bottom: var(--tabbar, 0px);
   z-index: 2;
   margin: 16px calc(-1 * var(--gutter)) 0;
   padding: 10px var(--gutter) calc(10px + var(--safe-bottom));
   background: var(--bg);
   display: grid;
   gap: 8px;
+}
+
+/* Above the tab bar, which already clears the home indicator. */
+main.with-tabs .dock {
+  padding-bottom: 10px;
 }
 
 @media (prefers-reduced-motion: reduce) {
