@@ -27,3 +27,9 @@ var claudePrices = map[string]Price{
 	"claude-opus-5-5":   {Input: 4, CacheWrite: 5, CacheRead: 0.20, Output: 20},
 	"claude-haiku-5-5":  {Input: 0.10, CacheWrite: 0.125, CacheRead: 0.01, Output: 0.50},
 }
+
+// ClaudePrice is a model's list price; false for a model not in the table.
+func ClaudePrice(model string) (Price, bool) {
+	price, ok := claudePrices[model]
+	return price, ok
+}

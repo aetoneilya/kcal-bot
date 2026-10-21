@@ -173,17 +173,17 @@
   <ul class="group">
     <li class="row">
       <span class="text">
-        <span>Итог дня</span>
-        <span class="sub">Сколько съедено против нормы</span>
+        <span>Итог недели</span>
+        <span class="sub">По воскресеньям: среднее за неделю и совет</span>
       </span>
       {#if reminders.summaryAt}
-        <input class="num clock" type="time" bind:value={summaryTime} onchange={() => saveReminders({ summaryAt: summaryTime })} aria-label="Время итога" />
+        <input class="num clock" type="time" bind:value={summaryTime} onchange={() => saveReminders({ summaryAt: summaryTime })} aria-label="Время итога недели" />
       {/if}
       <button
         class="switch"
         role="switch"
         aria-checked={Boolean(reminders.summaryAt)}
-        aria-label="Итог дня"
+        aria-label="Итог недели"
         onclick={() => saveReminders({ summaryAt: reminders.summaryAt ? "" : summaryTime })}
       ><i></i></button>
     </li>

@@ -31,10 +31,22 @@ func NewClaude(apiKey, modelID, effort string) *Claude {
 	if effort == "" {
 		effort = "medium"
 	}
-	// The SDK also reads ANTHROPIC_BASE_URL and ANTHROPIC_CUSTOM_HEADERS from
-	// the environment. A developer machine may set those for some other
-	// gateway (a corporate proxy, say), and this key must never go there, so
-	// both are overridden rather than inherited.
+	price, priced := ClaudePrice(modelID)
+	return &Claude{
+		client: NewAnthropicClient(apiKey),
+		model:  modelID,
+		effort: anthropic.OutputConfigEffort(effort),
+		price:  price,
+		priced: priced,
+	}
+}
+
+// NewAnthropicClient talks to api.anthropic.com with apiKey and nothing
+// else. The SDK also reads ANTHROPIC_BASE_URL and ANTHROPIC_CUSTOM_HEADERS
+// from the environment. A developer machine may set those for some other
+// gateway (a corporate proxy, say), and this key must never go there, so
+// both are overridden rather than inherited.
+func NewAnthropicClient(apiKey string) anthropic.Client {
 	opts := []option.RequestOption{
 		option.WithBaseURL("https://api.anthropic.com/"),
 		option.WithAPIKey(apiKey),
@@ -44,14 +56,7 @@ func NewClaude(apiKey, modelID, effort string) *Claude {
 			opts = append(opts, option.WithHeaderDel(strings.TrimSpace(name)))
 		}
 	}
-	price, priced := claudePrices[modelID]
-	return &Claude{
-		client: anthropic.NewClient(opts...),
-		model:  modelID,
-		effort: anthropic.OutputConfigEffort(effort),
-		price:  price,
-		priced: priced,
-	}
+	return anthropic.NewClient(opts...)
 }
 
 func (c *Claude) Name() string { return "claude:" + c.model }

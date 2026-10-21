@@ -30,6 +30,7 @@ import (
 	_ "time/tzdata" // reminders run on each person's clock; do not rely on the host's zone files
 
 	"github.com/aetoneilya/kcal-bot/api/internal/bot"
+	"github.com/aetoneilya/kcal-bot/api/internal/coach"
 	"github.com/aetoneilya/kcal-bot/api/internal/estimate"
 	"github.com/aetoneilya/kcal-bot/api/internal/evalset"
 	"github.com/aetoneilya/kcal-bot/api/internal/foodfacts"
@@ -49,6 +50,7 @@ func main() {
 	staticDir := flag.String("static", os.Getenv("STATIC_DIR"), "directory with the built Mini App (web/dist) to serve at /; empty serves the API only")
 	probe := flag.String("probe", "", "estimate this photo once with the configured model, print the raw answer and cost, and exit")
 	probeNote := flag.String("note", "", "with -probe: the note to send alongside the photo")
+	coachProbe := flag.Bool("coach", false, "write one sample weekly-summary message with the configured Claude key, print it and its cost, and exit")
 	evalDir := flag.String("eval", "", "run the configured model over a directory of weighed meals (see internal/evalset) and print the error report")
 	flag.Parse()
 
@@ -64,6 +66,13 @@ func main() {
 		}
 		if err != nil {
 			log.Error("eval failed", "err", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if *coachProbe {
+		if err := runCoachProbe(); err != nil {
+			log.Error("coach probe failed", "err", err)
 			os.Exit(1)
 		}
 		return
@@ -195,7 +204,7 @@ func main() {
 	if !*devMode {
 		launcher := &bot.Bot{Client: client, AppURL: *origin, Allowed: allowed, Users: st, Owner: owner,
 			Analyzer: api.Analyzer(), Meals: st, Treats: gifts, Log: log}
-		reminders := &bot.Reminders{Client: client, Store: st, AppURL: *origin, Treats: gifts, Log: log}
+		reminders := &bot.Reminders{Client: client, Store: st, AppURL: *origin, Coach: newCoach(), Treats: gifts, Log: log}
 		go reminders.Run(ctx)
 		go func() {
 			defer close(botDone)
@@ -311,6 +320,31 @@ func runProbe(path, note string, devMode bool) error {
 	})
 	fmt.Printf("estimator: %s\nms: %d\ntokens in/out: %d/%d\nusd: %.4f\nraw:\n%s\n",
 		estimator.Name(), time.Since(started).Milliseconds(), result.Usage.Input, result.Usage.Output, result.Cost, result.Raw)
+	return err
+}
+
+// newCoach writes the weekly summary's warm lines with Claude when there is
+// a key; nil falls back to fixed tips.
+func newCoach() coach.Coach {
+	key := os.Getenv("ANTHROPIC_API_KEY")
+	if key == "" {
+		return nil
+	}
+	return coach.NewClaude(key, os.Getenv("CLAUDE_MODEL"))
+}
+
+// runCoachProbe prints what the coach writes for a made-up, middling week.
+func runCoachProbe() error {
+	c := newCoach()
+	if c == nil {
+		return errors.New("ANTHROPIC_API_KEY is not set")
+	}
+	weight, change := 61.2, -0.4
+	text, cost, err := c.Motivate(context.Background(), coach.Week{
+		Name: "Соня", Sex: model.SexFemale, Logged: 5, Kcal: 1720, Protein: 62,
+		Target: 1800, OnTarget: 3, Weight: &weight, Change: &change,
+	})
+	fmt.Printf("usd: %.4f\n\n%s\n", cost, text)
 	return err
 }
 

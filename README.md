@@ -36,7 +36,7 @@ Both real backends use the same prompt and JSON schema (`api/internal/estimate`)
 - **Норма** — sex, birth year, height, weight, goal weight, activity and pace give a daily target (Mifflin–St Jeor with guard rails: a deficit of at most a quarter, a floor of 1200/1500 kcal). The formula lives in `web/src/lib/targets.ts` and, for the bot, in `api/internal/model/targets.go`; their tests pin the same numbers.
 - **Вес** — one weigh-in a day with a chart; the newest becomes the profile's weight, so the target follows the scale.
 - **Календарь** — each finished day against the target its weight called for: short, on target (±10%), over.
-- **Bot messages** — an opt-in evening total and a midday nudge, on the phone's time zone.
+- **Bot messages** — opt-in, on the phone's time zone: a Sunday summary of the week (days logged, average against the target, weight trend) closed by a few warm lines and one healthy habit to try, written by Claude (`api/internal/coach`, `kcal-bot -coach` prints a sample) or a fixed tip without a key; and a midday nudge when nothing is logged.
 - **Your portions** — the last 60 days of saved items go into the prompt as the person's usual weights.
 - **Treats** — for the people in `TREAT_USERS` only: a compliment of the day in the diary, a dancing cat with a compliment after each new meal and on a «Котик» button, and a compliment in the bot's messages. Compliments and videos sit in `TREATS_DIR` on the server, outside git (`api/internal/treats`); `scripts/push-treats.sh` copies a local `treats/` there.
 
