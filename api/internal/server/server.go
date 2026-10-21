@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/aetoneilya/kcal-bot/api/internal/estimate"
+	"github.com/aetoneilya/kcal-bot/api/internal/foodfacts"
 	"github.com/aetoneilya/kcal-bot/api/internal/model"
 	"github.com/aetoneilya/kcal-bot/api/internal/store"
 	"github.com/aetoneilya/kcal-bot/api/internal/tgauth"
@@ -42,6 +43,8 @@ type Config struct {
 	// TotalDailySpendLimit caps everyone's model calls together per UTC day,
 	// in USD; 0 means no cap. It stops many accounts from adding up to a bill.
 	TotalDailySpendLimit float64
+	// Products looks barcodes up. Nil turns the barcode route off.
+	Products Products
 	// Notifier hears about new people and spent budgets. Nil drops them.
 	Notifier Notifier
 	// AllowedOrigin is the single browser origin permitted cross-origin calls
@@ -50,6 +53,11 @@ type Config struct {
 	// StaticDir, when set, is the built Mini App served at "/".
 	StaticDir string
 	Log       *slog.Logger
+}
+
+// Products finds packaged food by barcode.
+type Products interface {
+	Lookup(ctx context.Context, code string) (foodfacts.Product, error)
 }
 
 // Notifier tells the owner about events worth a look. Implementations must
@@ -99,6 +107,7 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("POST /api/analyze", s.handleAnalyze)
 	api.HandleFunc("GET /api/meals", s.handleListMeals)
 	api.HandleFunc("GET /api/meals/regular", s.handleRegularMeals)
+	api.HandleFunc("GET /api/barcode/{code}", s.handleBarcode)
 	api.HandleFunc("POST /api/meals", s.handleCreateMeal)
 	api.HandleFunc("PUT /api/meals/{id}", s.handleUpdateMeal)
 	api.HandleFunc("DELETE /api/meals/{id}", s.handleDeleteMeal)
@@ -418,6 +427,51 @@ func supportedImage(mime string) bool {
 }
 
 // handleListMeals takes from/to as unix seconds: the client's local day.
+// handleBarcode turns a product's label data into a one-line draft. The
+// per-100 g values come from the label; the weight is a starting guess the
+// person adjusts — a serving when the label names one, the whole pack when
+// it is small enough to be one, 100 g otherwise.
+func (s *Server) handleBarcode(w http.ResponseWriter, r *http.Request) {
+	code := r.PathValue("code")
+	if len(code) < 8 || len(code) > 14 || strings.Trim(code, "0123456789") != "" {
+		writeError(w, http.StatusBadRequest, "штрихкод — это 8–14 цифр")
+		return
+	}
+	if s.cfg.Products == nil {
+		writeError(w, http.StatusNotFound, "поиск по штрихкоду выключен")
+		return
+	}
+	product, err := s.cfg.Products.Lookup(r.Context(), code)
+	if errors.Is(err, foodfacts.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "этого продукта нет в базе — сфотографируй этикетку, посчитаю по ней")
+		return
+	}
+	if err != nil {
+		s.cfg.Log.Warn("barcode lookup failed", "code", code, "err", err)
+		writeError(w, http.StatusBadGateway, "база продуктов не ответила — попробуй ещё раз или сфотографируй этикетку")
+		return
+	}
+	grams, confidence := 100.0, model.ConfidenceLow
+	switch {
+	case product.ServingGrams >= 5 && product.ServingGrams <= 1000:
+		grams, confidence = product.ServingGrams, model.ConfidenceMedium
+	case product.PackageGrams > 0 && product.PackageGrams <= 250:
+		grams, confidence = product.PackageGrams, model.ConfidenceMedium
+	}
+	draft := model.Draft{
+		Title: product.Name,
+		Items: []model.Item{{
+			Name: product.Name, Grams: grams, Kcal100: product.Kcal100,
+			Protein100: product.Protein100, Fat100: product.Fat100, Carbs100: product.Carbs100,
+			Confidence: confidence,
+		}},
+	}.Normalize()
+	if draft.Items[0].Name == "" {
+		draft.Items[0].Name = "Продукт " + code
+	}
+	writeJSON(w, http.StatusOK, draft)
+}
+
 // handleRegularMeals lists the meals worth offering to repeat.
 func (s *Server) handleRegularMeals(w http.ResponseWriter, r *http.Request) {
 	regulars, err := s.st.RegularMeals(r.Context(), userFrom(r.Context()).ID, time.Now().Add(-historyWindow), 12)

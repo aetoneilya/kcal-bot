@@ -3,6 +3,7 @@
   import { api, type Draft, type Meal, type Regular } from "../lib/api";
   import { kcal, sumTotals } from "../lib/nutrition";
   import { plural } from "../lib/plural";
+  import { decodeBarcode } from "../lib/barcode";
   import { downscale } from "../lib/image";
   import { haptic } from "../lib/telegram";
   import Icon from "../components/Icon.svelte";
@@ -62,6 +63,30 @@
     }
     active = photos.length - 1;
     haptic();
+  }
+
+  // A barcode skips the model: the label's numbers come from Open Food Facts.
+  let scanning = $state(false);
+  async function scan(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) return;
+    haptic();
+    scanning = true;
+    error = "";
+    try {
+      const code = await decodeBarcode(file);
+      if (!code) {
+        error = "Не разобрал штрихкод — сними ближе и ровно, чтобы полоски были чёткими.";
+        return;
+      }
+      onDraft(await api.barcode(code), note, []);
+    } catch (e) {
+      error = (e as Error).message;
+    } finally {
+      scanning = false;
+    }
   }
 
   function remove(index: number) {
@@ -133,6 +158,10 @@
     <label class="ghost" class:off={busy || room === 0}>
       <Icon name="image" />Из галереи
       <input type="file" accept="image/*" multiple onchange={pick} hidden disabled={busy || room === 0} />
+    </label>
+    <label class="ghost" class:off={busy || scanning}>
+      <Icon name="barcode" />{scanning ? "Ищу…" : "Штрихкод"}
+      <input type="file" accept="image/*" capture="environment" onchange={scan} hidden disabled={busy || scanning} />
     </label>
     <button class="ghost" onclick={onManual} disabled={busy}><Icon name="pencil" />Вручную</button>
   </div>

@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/aetoneilya/kcal-bot/api/internal/estimate"
+	"github.com/aetoneilya/kcal-bot/api/internal/foodfacts"
 	"github.com/aetoneilya/kcal-bot/api/internal/model"
 	"github.com/aetoneilya/kcal-bot/api/internal/store"
 )
@@ -276,6 +277,38 @@ func TestBlockedUsersAreTurnedAway(t *testing.T) {
 	}
 	if w := do(t, h, 7, "GET", "/api/me", nil, ""); w.Code != http.StatusForbidden {
 		t.Fatalf("a blocked user must get 403, got %d", w.Code)
+	}
+}
+
+type stubProducts map[string]foodfacts.Product
+
+func (p stubProducts) Lookup(_ context.Context, code string) (foodfacts.Product, error) {
+	if product, ok := p[code]; ok {
+		return product, nil
+	}
+	return foodfacts.Product{}, foodfacts.ErrNotFound
+}
+
+func TestBarcodeBecomesAOneLineDraft(t *testing.T) {
+	h := newTestServer(t, &stubEstimator{}, Config{Products: stubProducts{
+		"4600000000001": {Name: "Кефир 2,5%", Kcal100: 53, Protein100: 2.9, Fat100: 2.5, Carbs100: 4, PackageGrams: 900},
+		"4600000000002": {Name: "Йогурт", Kcal100: 80, PackageGrams: 125},
+	}})
+	var draft model.Draft
+	w := do(t, h, 7, "GET", "/api/barcode/4600000000001", nil, "")
+	if err := json.Unmarshal(w.Body.Bytes(), &draft); err != nil || w.Code != http.StatusOK ||
+		len(draft.Items) != 1 || draft.Items[0].Grams != 100 || draft.Items[0].Kcal100 != 53 {
+		t.Fatalf("a big pack starts at 100 g: %d %s", w.Code, w.Body)
+	}
+	w = do(t, h, 7, "GET", "/api/barcode/4600000000002", nil, "")
+	if err := json.Unmarshal(w.Body.Bytes(), &draft); err != nil || draft.Items[0].Grams != 125 {
+		t.Fatalf("a small pack starts whole: %s", w.Body)
+	}
+	if w := do(t, h, 7, "GET", "/api/barcode/4600000000009", nil, ""); w.Code != http.StatusNotFound {
+		t.Fatalf("unknown product: %d", w.Code)
+	}
+	if w := do(t, h, 7, "GET", "/api/barcode/12ab", nil, ""); w.Code != http.StatusBadRequest {
+		t.Fatalf("not a barcode: %d", w.Code)
 	}
 }
 

@@ -117,6 +117,7 @@ export const api = {
   },
 
   regularMeals: () => request<Regular[]>("/api/meals/regular"),
+  barcode: (code: string) => request<Draft>(`/api/barcode/${code}`),
 
   reminders: () => request<Reminders>("/api/reminders"),
   saveReminders: (r: Reminders) => request<Reminders>("/api/reminders", json("PUT", r)),
