@@ -27,10 +27,24 @@ Studies of LLM calorie estimation agree: models recognise food well and misjudge
 
 Both real backends use the same prompt and JSON schema (`api/internal/estimate`). Rough cost: ~$0.01 per photo, $1.5–3 per person per month at five meals a day. Neither API is reachable from Russia, so the server must run abroad.
 
+## Beyond the photo
+
+- **Several photos per meal** — the plate and its label together; up to three.
+- **Barcode** — a photo of the barcode is decoded in the browser and looked up in Open Food Facts; no model call.
+- **Ещё раз** — meals eaten in the last 60 days, grouped by their foods, most frequent first; a tap copies one.
+- **Норма** — sex, birth year, height, weight, goal weight, activity and pace give a daily target (Mifflin–St Jeor with guard rails: a deficit of at most a quarter, a floor of 1200/1500 kcal). The formula lives in `web/src/lib/targets.ts` and, for the bot, in `api/internal/model/targets.go`; their tests pin the same numbers.
+- **Вес** — one weigh-in a day with a chart; the newest becomes the profile's weight, so the target follows the scale.
+- **Календарь** — each finished day against the target its weight called for: short, on target (±10%), over.
+- **Bot messages** — an opt-in evening total and a midday nudge, on the phone's time zone.
+- **Your portions** — the last 60 days of saved items go into the prompt as the person's usual weights.
+
 ## Access and limits
 
-- `ALLOW_USER_IDS` — comma-separated Telegram ids. Anyone else gets a 403 in the app, and `/start` tells them their id to send you. Empty means open to anyone (the server warns).
+- Open to anyone by default. With `ADMIN_USER_ID` set, the owner gets a message about each new person with a Block button, and `/block <id>`, `/unblock <id>` in the bot. A blocked person keeps their diary but cannot open it.
+- `ALLOW_USER_IDS` — optional allow list instead; anyone else gets a 403 and `/start` tells them their id.
 - `DAILY_ANALYSIS_LIMIT` — model calls per user per UTC day, default 30. A failed call is refunded. Manual entry is never limited.
+- `DAILY_SPEND_LIMIT_USD` — model spend per user per UTC day, default $0.50, from the token counts each answer reports and the prices in `api/internal/estimate/cost.go`. The owner hears when someone reaches it.
+- `DAILY_TOTAL_SPEND_LIMIT_USD` — everyone together, default $5; analysis pauses for all until the next UTC day.
 
 ## Local development
 
@@ -54,6 +68,15 @@ To try it inside Telegram before a VPS exists, run the API with `BOT_TOKEN` and 
 
 ## Deployment
 
+The live bot runs as a systemd service on a VPS: `scripts/deploy.sh` runs the checks, builds the binary and the Mini App, backs up the database, swaps both (keeping `*.old`) and rolls back if `/api/health` does not answer after the restart.
+
+Two tools run the configured model on the host that has its key, without Telegram:
+
+- `kcal-bot -probe photo.jpg [-note …]` — one photo; prints the raw answer, tokens and cost.
+- `kcal-bot -eval evals/` — a set of weighed meals; prints the error report (see `evals/README.md`).
+
+With Docker instead:
+
 1. Create the bot in @BotFather; point a domain at the VPS.
 2. `cp .env.example .env` and fill in `BOT_TOKEN`, `APP_DOMAIN`, `ALLOW_USER_IDS` and a model key.
 3. `docker compose up -d --build` — Caddy gets the certificate, the app sets the bot's menu button and starts answering `/start`.
@@ -67,7 +90,12 @@ All routes but health need the `X-Telegram-Init-Data` header.
 | Route | |
 |---|---|
 | `GET /api/health` | Readiness, pings the database |
-| `GET /api/me` | User, estimator name, analyses left today |
-| `POST /api/analyze` | Multipart `photo` and/or `note` → draft (nothing saved) |
+| `GET /api/me` | User, estimator name, analyses left today, profile |
+| `POST /api/analyze` | Multipart: up to three `photo`, `note`, and `question` + `answer` for a re-estimate → draft (nothing saved) |
+| `GET /api/barcode/{code}` | Open Food Facts lookup → one-line draft |
 | `GET /api/meals?from=&to=` | Meals in `[from, to)`, unix seconds — the client's local day |
+| `GET /api/meals/regular` | Meals worth repeating, most frequent first |
 | `POST /api/meals` · `PUT /api/meals/{id}` · `DELETE /api/meals/{id}` | Save, replace, delete |
+| `PUT /api/profile` | Save the profile |
+| `GET /api/weights?from=&to=` · `PUT /api/weights/{day}` · `DELETE /api/weights/{day}` | Weigh-ins by local day, `YYYY-MM-DD` |
+| `GET /api/reminders` · `PUT /api/reminders` | Bot message settings |
