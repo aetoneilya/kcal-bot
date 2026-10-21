@@ -2,12 +2,13 @@
   import { onDestroy } from "svelte";
   import { fade, scale } from "svelte/transition";
   import { cubicOut } from "svelte/easing";
+  import ChromaVideo from "./ChromaVideo.svelte";
   import Icon from "./Icon.svelte";
   import Kitten from "./Kitten.svelte";
 
-  // A dancing cat over everything, with a compliment under it. `video` is
-  // an object URL still on its way (null when there are no cats); tapping
-  // anywhere closes.
+  // A singing cat over the diary, its green screen keyed out, with a
+  // compliment under it. `video` is an object URL still on its way (null
+  // when there are no cats); tapping anywhere closes.
   let {
     video,
     compliment,
@@ -18,7 +19,6 @@
   let src = $state("");
   let failed = $state(false);
   let muted = $state(false);
-  let player = $state<HTMLVideoElement>();
 
   $effect(() => {
     let stale = false;
@@ -36,23 +36,9 @@
     if (src) URL.revokeObjectURL(src);
   });
 
-  // Reels dance to music, so try with sound; a browser that refuses
-  // autoplay with sound gets it muted and a button to turn it on.
-  $effect(() => {
-    const el = player;
-    if (!el || !src) return;
-    el.muted = false;
-    el.play().catch(() => {
-      el.muted = muted = true;
-      el.play().catch(() => {});
-    });
-  });
-
   function unmute(e: MouseEvent) {
     e.stopPropagation();
-    if (!player) return;
-    player.muted = muted = false;
-    player.play().catch(() => {});
+    muted = false;
   }
 </script>
 
@@ -65,8 +51,7 @@
   <div class="stage" in:scale={{ start: 0.9, duration: 260, easing: cubicOut }}>
     {#if video && !failed}
       {#if src}
-        <!-- svelte-ignore a11y_media_has_caption -->
-        <video bind:this={player} {src} loop playsinline preload="auto"></video>
+        <ChromaVideo {src} bind:muted />
         {#if muted}
           <button class="sound" onclick={unmute}><Icon name="volume" size={18} />Со звуком</button>
         {/if}
@@ -93,10 +78,12 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 16px;
+    gap: 12px;
     padding: 24px var(--gutter) calc(24px + var(--safe-bottom));
-    background: rgb(12 8 14 / 0.88);
-    color: #fff;
+    background: color-mix(in srgb, var(--bg) 78%, transparent);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    color: var(--text);
     text-align: center;
     outline: none;
   }
@@ -106,24 +93,19 @@
     align-items: center;
     gap: 6px;
     margin: 0;
+    padding: 6px 14px 6px 10px;
+    border-radius: 18px;
+    background: var(--card);
     font-weight: 600;
-    opacity: 0.9;
+    box-shadow: 0 2px 10px rgb(0 0 0 / 0.08);
   }
 
   .stage {
     position: relative;
     display: grid;
     place-items: center;
-    width: min(100%, 360px);
-    max-height: 62dvh;
-  }
-
-  video {
-    width: 100%;
-    max-height: 62dvh;
-    border-radius: 22px;
-    background: #000;
-    object-fit: contain;
+    width: min(100%, 380px);
+    min-height: 200px;
   }
 
   .sound {
@@ -134,13 +116,14 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    min-height: 40px;
-    padding: 0 14px;
-    border-radius: 20px;
-    background: rgb(0 0 0 / 0.55);
+    min-height: 44px;
+    padding: 0 16px;
+    border-radius: 22px;
+    background: var(--treat);
     color: #fff;
     font-size: 15px;
-    font-weight: 500;
+    font-weight: 600;
+    box-shadow: 0 4px 14px rgb(0 0 0 / 0.15);
   }
 
   .waiting {
@@ -149,8 +132,8 @@
     width: 160px;
     height: 160px;
     border-radius: 50%;
-    background: color-mix(in srgb, var(--treat) 30%, transparent);
-    color: #fff;
+    background: color-mix(in srgb, var(--treat) 18%, var(--card));
+    color: var(--treat);
     animation: bounce 0.9s var(--ease-out) infinite alternate;
   }
 
@@ -169,7 +152,7 @@
 
   .hint {
     margin: 0;
-    color: rgb(255 255 255 / 0.55);
+    color: var(--hint);
     font-size: 13px;
   }
 

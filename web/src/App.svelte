@@ -52,6 +52,8 @@
       compliment: pick(treats.compliments, todaysCompliment) ?? "",
       title,
     };
+    // Have the next one ready, so it starts at once and with sound.
+    cats?.prefetch();
   }
 
   // A short confirmation after a save or delete, so leaving the editor is
@@ -86,6 +88,7 @@
           api.treats().then((t) => {
             treats = t;
             cats = new Cats(t.cats, api.cat);
+            cats.prefetch();
           }, () => {});
         }
       })
@@ -101,11 +104,7 @@
     return onBack(() => close());
   });
 
-  // The cat after a save should start at once: fetch it while the meal is
-  // being photographed.
-  $effect(() => {
-    if (task?.name === "capture") cats?.prefetch();
-  });
+
 </script>
 
 <main class:with-tabs={!task}>
