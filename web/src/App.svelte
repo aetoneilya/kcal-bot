@@ -5,6 +5,7 @@
   import MealEditor from "./screens/MealEditor.svelte";
   import ProfileScreen from "./screens/Profile.svelte";
   import Calendar from "./screens/Calendar.svelte";
+  import WeightScreen from "./screens/Weight.svelte";
   import Icon from "./components/Icon.svelte";
   import { api, type Draft, type Meal } from "./lib/api";
   import { startOfDay } from "./lib/day";
@@ -16,6 +17,7 @@
     | { name: "capture" }
     | { name: "profile" }
     | { name: "calendar" }
+    | { name: "weight" }
     | { name: "editor"; meal?: Meal; draft?: Draft; note?: string; photos?: Blob[] };
 
   let view = $state<View>({ name: "today" });
@@ -27,12 +29,15 @@
 
   const home = () => (view = { name: "today" });
 
-  onMount(() => {
+  // A weigh-in changes the profile's weight on the server; read it back.
+  function loadProfile() {
     api
       .me()
       .then((me) => (profile = me.profile))
-      .catch(() => (profile = null));
-  });
+      .catch(() => (profile = profile ?? null));
+  }
+
+  onMount(loadProfile);
 
   // Telegram's back button mirrors leaving any sub-screen.
   $effect(() => {
@@ -56,11 +61,16 @@
       onOpen={(meal) => (view = { name: "editor", meal })}
       onGoal={() => (view = { name: "profile" })}
       onCalendar={() => (view = { name: "calendar" })}
+      onWeight={() => (view = { name: "weight" })}
+      weightKg={profile?.weightKg ?? null}
     />
+  {:else if view.name === "weight"}
+    <WeightScreen profile={profile ?? null} onChanged={loadProfile} />
   {:else if view.name === "calendar"}
     <Calendar
       initial={day}
       {target}
+      profile={profile ?? null}
       onPick={(picked) => {
         day = picked;
         home();

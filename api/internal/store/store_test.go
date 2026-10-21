@@ -313,3 +313,39 @@ func TestRegularMealsGroupBySameFoods(t *testing.T) {
 		t.Fatalf("want oatmeal ×3 (latest 260 g) then buckwheat, got %+v", regulars)
 	}
 }
+
+func TestWeightsFollowIntoTheProfile(t *testing.T) {
+	ctx := context.Background()
+	st := openTest(t)
+	st.now = func() time.Time { return time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC) }
+	if _, err := st.SaveProfile(ctx, 1, model.Profile{
+		Sex: model.SexMale, BirthYear: 1995, HeightCm: 180, WeightKg: 84, GoalWeightKg: 77,
+		Activity: model.ActivityModerate, PaceKgWeek: 0.5,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range []model.Weight{{Day: "2026-10-20", WeightKg: 83.04}, {Day: "2026-10-01", WeightKg: 85}} {
+		if _, err := st.SaveWeight(ctx, 1, w); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if p, _ := st.Profile(ctx, 1); p.WeightKg != 83 {
+		t.Fatalf("profile must take the newest weigh-in, not the last saved: %v", p.WeightKg)
+	}
+	weights, err := st.Weights(ctx, 1, "2026-10-01", "2026-10-31")
+	if err != nil || len(weights) != 2 || weights[0].Day != "2026-10-01" {
+		t.Fatalf("weights oldest first: %+v %v", weights, err)
+	}
+	if err := st.DeleteWeight(ctx, 1, "2026-10-20"); err != nil {
+		t.Fatal(err)
+	}
+	if p, _ := st.Profile(ctx, 1); p.WeightKg != 85 {
+		t.Fatalf("after deleting the newest, the profile falls back: %v", p.WeightKg)
+	}
+	if _, err := st.SaveWeight(ctx, 1, model.Weight{Day: "21.10.2026", WeightKg: 80}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("a malformed day must be rejected, got %v", err)
+	}
+	if _, err := st.SaveWeight(ctx, 2, model.Weight{Day: "2026-10-21", WeightKg: 70}); err != nil {
+		t.Fatalf("a weigh-in without a profile is fine: %v", err)
+	}
+}

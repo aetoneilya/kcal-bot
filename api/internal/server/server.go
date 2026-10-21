@@ -91,6 +91,9 @@ func (s *Server) Handler() http.Handler {
 	api := http.NewServeMux()
 	api.HandleFunc("GET /api/me", s.handleMe)
 	api.HandleFunc("PUT /api/profile", s.handleSaveProfile)
+	api.HandleFunc("GET /api/weights", s.handleListWeights)
+	api.HandleFunc("PUT /api/weights/{day}", s.handleSaveWeight)
+	api.HandleFunc("DELETE /api/weights/{day}", s.handleDeleteWeight)
 	api.HandleFunc("POST /api/analyze", s.handleAnalyze)
 	api.HandleFunc("GET /api/meals", s.handleListMeals)
 	api.HandleFunc("GET /api/meals/regular", s.handleRegularMeals)
@@ -157,6 +160,49 @@ type profileRequest struct {
 	GoalWeightKg float64        `json:"goalWeightKg"`
 	Activity     model.Activity `json:"activity"`
 	PaceKgWeek   float64        `json:"paceKgWeek"`
+}
+
+// handleListWeights takes from and to as YYYY-MM-DD, both inclusive.
+func (s *Server) handleListWeights(w http.ResponseWriter, r *http.Request) {
+	from, to := r.URL.Query().Get("from"), r.URL.Query().Get("to")
+	for _, day := range []string{from, to} {
+		if _, err := time.Parse(time.DateOnly, day); err != nil {
+			writeError(w, http.StatusBadRequest, "from and to must be YYYY-MM-DD")
+			return
+		}
+	}
+	weights, err := s.st.Weights(r.Context(), userFrom(r.Context()).ID, from, to)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, weights)
+}
+
+func (s *Server) handleSaveWeight(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		WeightKg float64 `json:"weightKg"`
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxJSON))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "request body is not a valid weight")
+		return
+	}
+	saved, err := s.st.SaveWeight(r.Context(), userFrom(r.Context()).ID, model.Weight{Day: r.PathValue("day"), WeightKg: body.WeightKg})
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, saved)
+}
+
+func (s *Server) handleDeleteWeight(w http.ResponseWriter, r *http.Request) {
+	if err := s.st.DeleteWeight(r.Context(), userFrom(r.Context()).ID, r.PathValue("day")); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleSaveProfile(w http.ResponseWriter, r *http.Request) {

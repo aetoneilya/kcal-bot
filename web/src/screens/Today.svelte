@@ -15,6 +15,8 @@
     onOpen,
     onGoal,
     onCalendar,
+    onWeight,
+    weightKg,
   }: {
     day: Date;
     target: Targets | null;
@@ -23,6 +25,8 @@
     onOpen: (meal: Meal) => void;
     onGoal: () => void;
     onCalendar: () => void;
+    onWeight: () => void;
+    weightKg: number | null;
   } = $props();
 
   let meals = $state<Meal[]>([]);
@@ -153,6 +157,12 @@
     {/if}
   </section>
 
+  <button class="weight" onclick={onWeight}>
+    <span>Вес</span>
+    <span class="num">{weightKg ? `${weightKg.toLocaleString("ru-RU", { maximumFractionDigits: 1 })} кг` : "записать"}</span>
+    <Icon name="chevron-right" size={18} />
+  </button>
+
   <h2 class="section-title">
     <span>Приёмы пищи</span>
     {#if meals.length > 0}<span class="num">{meals.length}</span>{/if}
@@ -273,7 +283,31 @@
 
   .summary {
     padding: 18px 16px 14px;
+    margin-bottom: 8px;
+  }
+
+  .weight {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 48px;
     margin-bottom: 24px;
+    padding: 0 12px 0 16px;
+    border-radius: var(--r);
+    background: var(--card);
+  }
+
+  .weight span:first-child {
+    flex: 1;
+    text-align: left;
+  }
+
+  .weight .num {
+    color: var(--hint);
+  }
+
+  .weight:active {
+    background: color-mix(in srgb, var(--hint) 10%, var(--card));
   }
 
   .top {

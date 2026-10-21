@@ -142,6 +142,88 @@ func (s *Store) SetBlocked(ctx context.Context, id int64, blocked bool) error {
 	return nil
 }
 
+// --- weight log --------------------------------------------------------------
+
+// SaveWeight records the day's weigh-in, replacing an earlier one that day.
+// When it is the newest weigh-in it also becomes the profile's current
+// weight, so the daily target follows the scale without another form.
+func (s *Store) SaveWeight(ctx context.Context, userID int64, w model.Weight) (model.Weight, error) {
+	w.WeightKg = math.Round(w.WeightKg*10) / 10
+	if err := model.ValidateWeight(w); err != nil {
+		return model.Weight{}, err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return model.Weight{}, err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO weights (user_id, day, weight_kg, updated_at) VALUES (?, ?, ?, ?)
+		ON CONFLICT (user_id, day) DO UPDATE SET weight_kg = excluded.weight_kg, updated_at = excluded.updated_at`,
+		userID, w.Day, w.WeightKg, s.now().Unix()); err != nil {
+		return model.Weight{}, fmt.Errorf("save weight: %w", err)
+	}
+	if err := syncProfileWeight(ctx, tx, userID); err != nil {
+		return model.Weight{}, err
+	}
+	return w, tx.Commit()
+}
+
+// DeleteWeight removes a weigh-in; the profile falls back to the newest left.
+func (s *Store) DeleteWeight(ctx context.Context, userID int64, day string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `DELETE FROM weights WHERE user_id = ? AND day = ?`, userID, day)
+	if err != nil {
+		return fmt.Errorf("delete weight: %w", err)
+	}
+	if n, _ := result.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	if err := syncProfileWeight(ctx, tx, userID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// syncProfileWeight copies the newest weigh-in into the profile, if both exist.
+func syncProfileWeight(ctx context.Context, tx *sql.Tx, userID int64) error {
+	_, err := tx.ExecContext(ctx, `
+		UPDATE profiles SET weight_kg = (
+			SELECT weight_kg FROM weights WHERE user_id = ? ORDER BY day DESC LIMIT 1
+		), updated_at = ?
+		WHERE user_id = ? AND EXISTS (SELECT 1 FROM weights WHERE user_id = ?)`,
+		userID, time.Now().Unix(), userID, userID)
+	if err != nil {
+		return fmt.Errorf("sync profile weight: %w", err)
+	}
+	return nil
+}
+
+// Weights returns the weigh-ins on days in [from, to], oldest first. Days
+// compare as text, which is date order for YYYY-MM-DD.
+func (s *Store) Weights(ctx context.Context, userID int64, from, to string) ([]model.Weight, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT day, weight_kg FROM weights WHERE user_id = ? AND day >= ? AND day <= ? ORDER BY day`,
+		userID, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("query weights: %w", err)
+	}
+	defer rows.Close()
+	weights := []model.Weight{}
+	for rows.Next() {
+		var w model.Weight
+		if err := rows.Scan(&w.Day, &w.WeightKg); err != nil {
+			return nil, err
+		}
+		weights = append(weights, w)
+	}
+	return weights, rows.Err()
+}
+
 // --- daily allowance ------------------------------------------------------
 
 func (s *Store) today() string { return s.now().UTC().Format(time.DateOnly) }

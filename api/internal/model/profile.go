@@ -72,6 +72,23 @@ func (p Profile) Validate(now time.Time) error {
 	return nil
 }
 
+// Weight is one weigh-in on a local calendar day.
+type Weight struct {
+	Day      string  `json:"day"` // YYYY-MM-DD, the phone's date
+	WeightKg float64 `json:"weightKg"`
+}
+
+// ValidateWeight checks a weigh-in; the day must be a real date.
+func ValidateWeight(w Weight) error {
+	if _, err := time.Parse(time.DateOnly, w.Day); err != nil {
+		return invalid("day must be YYYY-MM-DD")
+	}
+	if !inRange(w.WeightKg, MinWeightKg, MaxWeightKg) {
+		return invalid("weight must be between %d and %d kg", MinWeightKg, MaxWeightKg)
+	}
+	return nil
+}
+
 // Normalize rounds the numbers to what the form shows, so a saved profile
 // reads back exactly as entered.
 func (p Profile) Normalize() Profile {

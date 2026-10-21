@@ -3,7 +3,9 @@
   import { sameDay, startOfDay } from "../lib/day";
   import { add, kcal as fmtKcal, sumTotals, type Totals } from "../lib/nutrition";
   import { addMonths, dayStat, monthGrid, startOfMonth, summarize, TOLERANCE, type DayStat } from "../lib/calendar";
-  import { KCAL_PER_KG, type Targets } from "../lib/targets";
+  import { KCAL_PER_KG, targets, type Profile, type Targets } from "../lib/targets";
+  import type { Weight } from "../lib/api";
+  import { addDays, dayKey } from "../lib/day";
   import { haptic } from "../lib/telegram";
   import { untrack } from "svelte";
   import Icon from "../components/Icon.svelte";
@@ -11,9 +13,32 @@
   let {
     initial,
     target,
+    profile,
     onPick,
     onGoal,
-  }: { initial: Date; target: Targets | null; onPick: (day: Date) => void; onGoal: () => void } = $props();
+  }: {
+    initial: Date;
+    target: Targets | null;
+    profile: Profile | null;
+    onPick: (day: Date) => void;
+    onGoal: () => void;
+  } = $props();
+
+  let weights = $state<Weight[]>([]);
+
+  // A past day is judged against the target its weight called for then: the
+  // newest weigh-in on or before it, or the profile's weight without one.
+  function targetOn(date: Date): number | null {
+    if (!profile || !target) return null;
+    const key = dayKey(date);
+    // Before the first weigh-in the earliest one is the best guess.
+    let kg = weights[0]?.weightKg ?? profile.weightKg;
+    for (const w of weights) {
+      if (w.day > key) break;
+      kg = w.weightKg;
+    }
+    return targets({ ...profile, weightKg: kg })?.kcal ?? target.kcal;
+  }
 
   // Opens on the month of the day being viewed, then navigates on its own.
   let month = $state(startOfMonth(untrack(() => initial)));
@@ -27,7 +52,7 @@
   const weeks = $derived(monthGrid(month));
   const goal = $derived(target?.kcal ?? null);
   const stats = $derived(
-    weeks.flat().map((date) => (date ? dayStat(date, totals.get(date.getTime()) ?? 0, goal) : null)),
+    weeks.flat().map((date) => (date ? dayStat(date, totals.get(date.getTime()) ?? 0, goal === null ? null : targetOn(date)) : null)),
   );
   const summary = $derived(summarize(stats.filter((s): s is DayStat => s !== null)));
   const title = $derived(month.toLocaleDateString("ru-RU", { month: "long", year: "numeric" }).replace(" г.", ""));
@@ -49,6 +74,10 @@
           byDay.set(key, add(byDay.get(key) ?? { kcal: 0, protein: 0, fat: 0, carbs: 0 }, sumTotals(meal.items)));
         }
         totals = new Map([...byDay].map(([k, t]) => [k, t.kcal]));
+      })
+      .then(() => (profile ? api.weights(dayKey(addDays(from, -120)), dayKey(addMonths(from, 1))) : []))
+      .then((list) => {
+        if (!stale) weights = list;
       })
       .catch((e) => {
         if (!stale) error = e.message;

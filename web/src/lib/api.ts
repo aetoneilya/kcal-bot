@@ -49,6 +49,12 @@ export interface Regular {
   times: number;
 }
 
+/** One weigh-in on a local day. */
+export interface Weight {
+  day: string; // YYYY-MM-DD
+  weightKg: number;
+}
+
 export interface Me {
   id: number;
   firstName: string;
@@ -104,6 +110,10 @@ export const api = {
   },
 
   regularMeals: () => request<Regular[]>("/api/meals/regular"),
+
+  weights: (from: string, to: string) => request<Weight[]>(`/api/weights?from=${from}&to=${to}`),
+  saveWeight: (day: string, weightKg: number) => request<Weight>(`/api/weights/${day}`, json("PUT", { weightKg })),
+  deleteWeight: (day: string) => request<void>(`/api/weights/${day}`, { method: "DELETE" }),
 
   meals: (from: Date, to: Date) =>
     request<Meal[]>(
