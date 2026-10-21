@@ -130,6 +130,7 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("POST /api/meals", s.handleCreateMeal)
 	api.HandleFunc("PUT /api/meals/{id}", s.handleUpdateMeal)
 	api.HandleFunc("DELETE /api/meals/{id}", s.handleDeleteMeal)
+	api.HandleFunc("GET /api/meals/{id}/photo", s.handleMealPhoto)
 	api.HandleFunc("GET /api/treats", s.handleTreats)
 	api.HandleFunc("GET /api/treats/cats/{name}", s.handleCat)
 
@@ -506,6 +507,7 @@ type mealRequest struct {
 	Title   string       `json:"title"`
 	Note    string       `json:"note"`
 	Items   []model.Item `json:"items"`
+	Photo   []byte       `json:"photo"` // base64 preview; optional
 }
 
 func (s *Server) decodeMeal(w http.ResponseWriter, r *http.Request) (store.MealInput, bool) {
@@ -516,7 +518,7 @@ func (s *Server) decodeMeal(w http.ResponseWriter, r *http.Request) (store.MealI
 		writeError(w, http.StatusBadRequest, "request body is not a valid meal")
 		return store.MealInput{}, false
 	}
-	return store.MealInput{EatenAt: body.EatenAt, Title: body.Title, Note: body.Note, Items: body.Items}, true
+	return store.MealInput{EatenAt: body.EatenAt, Title: body.Title, Note: body.Note, Items: body.Items, Photo: body.Photo}, true
 }
 
 func (s *Server) handleCreateMeal(w http.ResponseWriter, r *http.Request) {
@@ -530,6 +532,22 @@ func (s *Server) handleCreateMeal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, meal)
+}
+
+func (s *Server) handleMealPhoto(w http.ResponseWriter, r *http.Request) {
+	id, ok := mealID(w, r)
+	if !ok {
+		return
+	}
+	photo, err := s.st.MealPhoto(r.Context(), userFrom(r.Context()).ID, id)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	// A meal's preview never changes once saved.
+	w.Header().Set("Content-Type", http.DetectContentType(photo))
+	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	_, _ = w.Write(photo)
 }
 
 func (s *Server) handleUpdateMeal(w http.ResponseWriter, r *http.Request) {

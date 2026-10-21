@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/http"
 	"sort"
 	"strings"
 	"time"
@@ -428,7 +429,13 @@ type MealInput struct {
 	Title   string
 	Note    string
 	Items   []model.Item
+	// Photo is an optional preview, set when the meal is created; an update
+	// keeps the one there is, so a cached preview never goes stale.
+	Photo []byte
 }
+
+// MaxPhoto caps a meal's preview; a 320 px JPEG is about 20 KB.
+const MaxPhoto = 64 << 10
 
 func (in MealInput) validate() error {
 	if in.EatenAt.IsZero() {
@@ -439,6 +446,16 @@ func (in MealInput) validate() error {
 	}
 	if err := model.ValidateText("note", in.Note, model.MaxNoteRunes); err != nil {
 		return err
+	}
+	if in.Photo != nil {
+		if len(in.Photo) > MaxPhoto {
+			return fmt.Errorf("%w: photo is larger than %d KB", ErrInvalid, MaxPhoto>>10)
+		}
+		switch http.DetectContentType(in.Photo) {
+		case "image/jpeg", "image/webp", "image/png":
+		default:
+			return fmt.Errorf("%w: photo must be JPEG, WebP or PNG", ErrInvalid)
+		}
 	}
 	return model.ValidateItems(in.Items)
 }
@@ -455,8 +472,8 @@ func (s *Store) CreateMeal(ctx context.Context, userID int64, in MealInput) (mod
 
 	now := s.now().Unix()
 	result, err := tx.ExecContext(ctx, `
-		INSERT INTO meals (user_id, eaten_at, title, note, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		userID, in.EatenAt.Unix(), strings.TrimSpace(in.Title), strings.TrimSpace(in.Note), now, now)
+		INSERT INTO meals (user_id, eaten_at, title, note, photo, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		userID, in.EatenAt.Unix(), strings.TrimSpace(in.Title), strings.TrimSpace(in.Note), in.Photo, now, now)
 	if err != nil {
 		return model.Meal{}, fmt.Errorf("insert meal: %w", err)
 	}
@@ -515,6 +532,19 @@ func (s *Store) DeleteMeal(ctx context.Context, userID, id int64) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// MealPhoto returns a meal's preview, or ErrNotFound when it has none.
+func (s *Store) MealPhoto(ctx context.Context, userID, id int64) ([]byte, error) {
+	var photo []byte
+	err := s.db.QueryRowContext(ctx, `SELECT photo FROM meals WHERE id = ? AND user_id = ?`, id, userID).Scan(&photo)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && photo == nil) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query meal photo: %w", err)
+	}
+	return photo, nil
 }
 
 func (s *Store) Meal(ctx context.Context, userID, id int64) (model.Meal, error) {
@@ -622,7 +652,7 @@ func (s *Store) RecentItems(ctx context.Context, userID int64, since time.Time, 
 
 func (s *Store) queryMeals(ctx context.Context, where string, args ...any) ([]model.Meal, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT m.id, m.eaten_at, m.title, m.note, m.created_at, m.updated_at,
+		SELECT m.id, m.eaten_at, m.title, m.note, m.photo IS NOT NULL, m.created_at, m.updated_at,
 		       i.name, i.grams, i.kcal_100, i.protein_100, i.fat_100, i.carbs_100, i.confidence
 		FROM meals m JOIN meal_items i ON i.meal_id = m.id
 		`+where+`
@@ -638,10 +668,11 @@ func (s *Store) queryMeals(ctx context.Context, where string, args ...any) ([]mo
 			id                        int64
 			eatenAt, created, updated int64
 			title, note               string
+			hasPhoto                  bool
 			item                      model.Item
 			confidence                string
 		)
-		if err := rows.Scan(&id, &eatenAt, &title, &note, &created, &updated,
+		if err := rows.Scan(&id, &eatenAt, &title, &note, &hasPhoto, &created, &updated,
 			&item.Name, &item.Grams, &item.Kcal100, &item.Protein100, &item.Fat100, &item.Carbs100, &confidence); err != nil {
 			return nil, err
 		}
@@ -652,6 +683,7 @@ func (s *Store) queryMeals(ctx context.Context, where string, args ...any) ([]mo
 				EatenAt:   time.Unix(eatenAt, 0).UTC(),
 				Title:     title,
 				Note:      note,
+				HasPhoto:  hasPhoto,
 				CreatedAt: time.Unix(created, 0).UTC(),
 				UpdatedAt: time.Unix(updated, 0).UTC(),
 			})

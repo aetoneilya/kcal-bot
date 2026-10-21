@@ -39,6 +39,19 @@ func (a *photoAPI) last(method string) map[string]any {
 	return nil
 }
 
+// files lists the file ids the bot fetched, in order.
+func (a *photoAPI) files() []string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	var ids []string
+	for _, c := range a.calls {
+		if c.method == "getFile" {
+			ids = append(ids, c.body["file_id"].(string))
+		}
+	}
+	return ids
+}
+
 func (a *photoAPI) count(method string) int {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -151,7 +164,10 @@ func TestPhotoInChatBecomesAMealAfterAnAnswer(t *testing.T) {
 
 	b.Handle(ctx, photoMessage(7, 7, "", "  на ужин "))
 	b.Wait()
-	if got := api.last("getFile")["file_id"]; got != "right" {
+	if got := api.files(); len(got) != 2 || got[0] != "right" || got[1] != "small" {
+		t.Fatalf("downloaded %v, want the photo within %dpx and then its preview", got, maxPhotoSide)
+	}
+	if got := api.last("getFile")["file_id"]; got != "small" {
 		t.Fatalf("downloaded %v, want the largest size within %dpx", got, maxPhotoSide)
 	}
 	if len(analyzer.inputs) != 1 || len(analyzer.inputs[0].Photos) != 1 || analyzer.inputs[0].Note != "на ужин" ||
@@ -190,7 +206,7 @@ func TestPhotoInChatBecomesAMealAfterAnAnswer(t *testing.T) {
 
 	b.Handle(ctx, press(7, keys[0]))
 	meals, err := st.Meals(ctx, 7, day, day.Add(48*time.Hour))
-	if err != nil || len(meals) != 1 || len(meals[0].Items) != 2 || meals[0].Note != "на ужин" ||
+	if err != nil || len(meals) != 1 || len(meals[0].Items) != 2 || meals[0].Note != "на ужин" || !meals[0].HasPhoto ||
 		!meals[0].EatenAt.Equal(time.Date(2026, 10, 21, 13, 0, 0, 0, time.UTC)) {
 		t.Fatalf("saved %+v %v", meals, err)
 	}

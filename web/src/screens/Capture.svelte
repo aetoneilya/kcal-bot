@@ -1,4 +1,5 @@
 <script lang="ts">
+  import MealThumb from "../components/MealThumb.svelte";
   import { onMount } from "svelte";
   import { api, type Draft, type Meal, type Regular } from "../lib/api";
   import { kcal, sumTotals } from "../lib/nutrition";
@@ -172,6 +173,7 @@
       {#each regulars.slice(0, 5) as r (r.meal.id)}
         <li>
           <button class="regular" onclick={() => onRepeat(r.meal)} disabled={busy}>
+            <MealThumb id={r.meal.id} hasPhoto={r.meal.hasPhoto} size={40} />
             <span class="body">
               <span class="name">{r.meal.title || r.meal.items.map((i) => i.name).join(", ")}</span>
               <span class="sub num">{r.times > 1 ? `${r.times} ${plural(r.times, ["раз", "раза", "раз"])} за 2 месяца` : "недавно"}</span>

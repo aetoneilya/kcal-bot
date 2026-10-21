@@ -6,6 +6,7 @@
   import type { Targets } from "../lib/targets";
   import Icon from "../components/Icon.svelte";
   import Kitten from "../components/Kitten.svelte";
+  import MealThumb from "../components/MealThumb.svelte";
 
   let {
     day = $bindable(),
@@ -178,7 +179,7 @@
     <ul class="group">
       {#each [0, 1] as i (i)}
         <li class="row">
-          <span class="skeleton" style="width: 40px; height: 14px"></span>
+          <span class="skeleton" style="width: 44px; height: 44px; border-radius: 10px"></span>
           <span class="body">
             <span class="skeleton" style="width: 60%; height: 16px"></span>
             <span class="skeleton" style="width: 40%; height: 13px"></span>
@@ -199,10 +200,10 @@
         {@const t = sumTotals(meal.items)}
         <li>
           <button class="row" onclick={() => onOpen(meal)}>
-            <span class="time num">{timeLabel(new Date(meal.eatenAt))}</span>
+            <MealThumb id={meal.id} hasPhoto={meal.hasPhoto} />
             <span class="body">
               <span class="name">{mealName(meal)}</span>
-              <span class="sub num">Б {grams(t.protein)} · Ж {grams(t.fat)} · У {grams(t.carbs)}</span>
+              <span class="sub num">{timeLabel(new Date(meal.eatenAt))} · Б {grams(t.protein)} · Ж {grams(t.fat)} · У {grams(t.carbs)}</span>
             </span>
             <span class="kcal num"><b class="round">{kcal(t.kcal)}</b> ккал</span>
           </button>
@@ -460,13 +461,6 @@
 
   button.row:active {
     background: var(--field);
-  }
-
-  .time {
-    width: 40px;
-    flex: none;
-    font-size: 14px;
-    color: var(--hint);
   }
 
   .body {

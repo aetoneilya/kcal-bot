@@ -22,3 +22,30 @@ export async function downscale(file: Blob): Promise<Blob> {
     canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("toBlob failed"))), "image/jpeg", 0.85),
   );
 }
+
+/** The diary's preview of a meal: small enough (~20 KB) to keep for every meal. */
+export const THUMB_SIDE = 320;
+
+export async function thumbnail(file: Blob): Promise<Blob> {
+  const bitmap = await createImageBitmap(file);
+  const size = fitWithin(bitmap.width, bitmap.height, THUMB_SIDE);
+  const canvas = document.createElement("canvas");
+  canvas.width = size.width;
+  canvas.height = size.height;
+  canvas.getContext("2d")!.drawImage(bitmap, 0, 0, size.width, size.height);
+  bitmap.close();
+  return new Promise((resolve, reject) =>
+    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("toBlob failed"))), "image/jpeg", 0.72),
+  );
+}
+
+/** Base64 without the data: prefix, as JSON carries bytes. */
+export async function base64(blob: Blob): Promise<string> {
+  const url: string = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+  return url.slice(url.indexOf(",") + 1);
+}

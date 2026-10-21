@@ -35,6 +35,8 @@ export interface Meal {
   title: string;
   note: string;
   items: Item[];
+  /** A preview is at /api/meals/{id}/photo. */
+  hasPhoto: boolean;
 }
 
 export interface MealInput {
@@ -42,6 +44,8 @@ export interface MealInput {
   title: string;
   note: string;
   items: Item[];
+  /** Base64 JPEG preview, on create only; an update keeps the saved one. */
+  photo?: string;
 }
 
 /** A meal worth repeating: its latest instance and how often it was eaten. */
@@ -151,4 +155,5 @@ export const api = {
   createMeal: (meal: MealInput) => request<Meal>("/api/meals", json("POST", meal)),
   updateMeal: (id: number, meal: MealInput) => request<Meal>(`/api/meals/${id}`, json("PUT", meal)),
   deleteMeal: (id: number) => request<void>(`/api/meals/${id}`, { method: "DELETE" }),
+  mealPhoto: (id: number) => blob(`/api/meals/${id}/photo`),
 };

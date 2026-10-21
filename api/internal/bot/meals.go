@@ -46,6 +46,8 @@ const (
 	// Telegram resizes photos into several sizes; the model gains nothing
 	// past this side, and smaller uploads are faster and cheaper.
 	maxPhotoSide = 1600
+	// The diary's preview of a meal is Telegram's own small size.
+	maxThumbSide = 320
 )
 
 type pendingMeal struct {
@@ -53,6 +55,7 @@ type pendingMeal struct {
 	chatID  int64
 	message int64 // the bot's answer, edited as things change
 	photos  []estimate.Photo
+	thumb   []byte // the diary's preview; nil when it could not be fetched
 	note    string
 	eatenAt time.Time
 	draft   model.Draft
@@ -65,6 +68,7 @@ type album struct {
 	user    model.User
 	chatID  int64
 	sizes   []telegram.PhotoSize
+	thumb   string // file id of the first photo's small size
 	caption string
 	date    int64
 }
@@ -90,13 +94,14 @@ func (b *Bot) Wait() { b.drafts.running.Wait() }
 // receivePhoto starts estimating a photo, or adds it to an album that is
 // still arriving.
 func (b *Bot) receivePhoto(ctx context.Context, message *telegram.Message, user model.User) {
-	size := pickSize(message.Photo)
+	size := pickSize(message.Photo, maxPhotoSide)
+	thumb := pickSize(message.Photo, maxThumbSide).FileID
 	d := &b.drafts
 	if message.MediaGroupID == "" {
 		d.running.Add(1)
 		go func() {
 			defer d.running.Done()
-			b.estimate(ctx, user, message.Chat.ID, []telegram.PhotoSize{size}, message.Caption, message.Date)
+			b.estimate(ctx, user, message.Chat.ID, []telegram.PhotoSize{size}, thumb, message.Caption, message.Date)
 		}()
 		return
 	}
@@ -115,7 +120,7 @@ func (b *Bot) receivePhoto(ctx context.Context, message *telegram.Message, user 
 		return
 	}
 	d.albums[message.MediaGroupID] = &album{user: user, chatID: message.Chat.ID, sizes: []telegram.PhotoSize{size},
-		caption: message.Caption, date: message.Date}
+		thumb: thumb, caption: message.Caption, date: message.Date}
 	d.running.Add(1)
 	time.AfterFunc(b.albumDelay(), func() {
 		defer d.running.Done()
@@ -123,7 +128,7 @@ func (b *Bot) receivePhoto(ctx context.Context, message *telegram.Message, user 
 		a := d.albums[message.MediaGroupID]
 		delete(d.albums, message.MediaGroupID)
 		d.mu.Unlock()
-		b.estimate(ctx, a.user, a.chatID, a.sizes, a.caption, a.date)
+		b.estimate(ctx, a.user, a.chatID, a.sizes, a.thumb, a.caption, a.date)
 	})
 }
 
@@ -139,22 +144,22 @@ func (b *Bot) receiveText(ctx context.Context, message *telegram.Message, user m
 	d.running.Add(1)
 	go func() {
 		defer d.running.Done()
-		b.estimate(ctx, user, message.Chat.ID, nil, message.Text, message.Date)
+		b.estimate(ctx, user, message.Chat.ID, nil, "", message.Text, message.Date)
 	}()
 }
 
-// pickSize takes the largest version that is not needlessly big.
-func pickSize(sizes []telegram.PhotoSize) telegram.PhotoSize {
+// pickSize takes the largest version within limit px a side.
+func pickSize(sizes []telegram.PhotoSize, limit int) telegram.PhotoSize {
 	best := sizes[0]
 	for _, s := range sizes[1:] {
-		if max(s.Width, s.Height) <= maxPhotoSide {
+		if max(s.Width, s.Height) <= limit {
 			best = s
 		}
 	}
 	return best
 }
 
-func (b *Bot) estimate(ctx context.Context, user model.User, chatID int64, sizes []telegram.PhotoSize, caption string, date int64) {
+func (b *Bot) estimate(ctx context.Context, user model.User, chatID int64, sizes []telegram.PhotoSize, thumb, caption string, date int64) {
 	_ = b.Client.SendChatAction(ctx, chatID, "typing")
 	messageID, err := b.Client.SendMessageID(ctx, telegram.SendMessageRequest{ChatID: chatID, Text: "Считаю калории… 🐱"})
 	if err != nil {
@@ -200,6 +205,12 @@ func (b *Bot) estimate(ctx context.Context, user model.User, chatID int64, sizes
 	}
 	meal := &pendingMeal{user: user, chatID: chatID, message: messageID, photos: in.Photos, note: note,
 		eatenAt: eatenAt, draft: draft, created: time.Now()}
+	if thumb != "" {
+		// Only a nicety: a meal saves fine without its preview.
+		if data, err := b.Client.DownloadFile(ctx, thumb); err == nil && len(data) <= store.MaxPhoto {
+			meal.thumb = data
+		}
+	}
 	id := b.keep(meal)
 	edit(describeDraft(draft, true), draftKeyboard(id, draft))
 }
@@ -275,7 +286,7 @@ func (b *Bot) handleMealPress(ctx context.Context, press *telegram.CallbackQuery
 	switch action {
 	case "save":
 		_, err := b.Meals.CreateMeal(ctx, meal.user.ID, store.MealInput{
-			EatenAt: meal.eatenAt, Title: meal.draft.Title, Note: meal.note, Items: meal.draft.Items,
+			EatenAt: meal.eatenAt, Title: meal.draft.Title, Note: meal.note, Items: meal.draft.Items, Photo: meal.thumb,
 		})
 		if err != nil {
 			b.log().Warn("could not save a meal from the bot", "user", meal.user.ID, "err", err)

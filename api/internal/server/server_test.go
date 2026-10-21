@@ -527,3 +527,51 @@ func TestTreatsAreOnlyForChosenPeople(t *testing.T) {
 		}
 	}
 }
+
+func TestMealPhotoIsSavedOnceAndOnlyForItsOwner(t *testing.T) {
+	h := newTestServer(t, &stubEstimator{}, Config{})
+	jpeg := []byte("\xff\xd8\xff\xe0 a tiny preview")
+	meal := map[string]any{
+		"eatenAt": time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC),
+		"title":   "Обед",
+		"items":   []model.Item{{Name: "суп", Grams: 300, Kcal100: 40, Confidence: model.ConfidenceMedium}},
+		"photo":   jpeg, // encoding/json sends []byte as base64, as the app does
+	}
+	w := do(t, h, 7, "POST", "/api/meals", jsonBody(t, meal), "application/json")
+	var created model.Meal
+	if err := json.NewDecoder(w.Body).Decode(&created); err != nil || w.Code != http.StatusCreated || !created.HasPhoto {
+		t.Fatalf("create: %d %+v %v", w.Code, created, err)
+	}
+	path := fmt.Sprintf("/api/meals/%d/photo", created.ID)
+	w = do(t, h, 7, "GET", path, nil, "")
+	if w.Code != http.StatusOK || w.Body.String() != string(jpeg) || w.Header().Get("Content-Type") != "image/jpeg" {
+		t.Fatalf("photo: %d %q", w.Code, w.Header().Get("Content-Type"))
+	}
+	if w := do(t, h, 8, "GET", path, nil, ""); w.Code != http.StatusNotFound {
+		t.Fatalf("someone else's photo: %d", w.Code)
+	}
+
+	// An edit without a photo keeps it.
+	delete(meal, "photo")
+	meal["title"] = "Суп"
+	if w := do(t, h, 7, "PUT", fmt.Sprintf("/api/meals/%d", created.ID), jsonBody(t, meal), "application/json"); w.Code != http.StatusOK {
+		t.Fatalf("update: %d %s", w.Code, w.Body)
+	}
+	if w := do(t, h, 7, "GET", path, nil, ""); w.Code != http.StatusOK {
+		t.Fatalf("photo after an edit: %d", w.Code)
+	}
+
+	meal["photo"] = []byte("not an image")
+	if w := do(t, h, 7, "POST", "/api/meals", jsonBody(t, meal), "application/json"); w.Code != http.StatusBadRequest {
+		t.Fatalf("a non-image photo: %d", w.Code)
+	}
+	delete(meal, "photo")
+	w = do(t, h, 7, "POST", "/api/meals", jsonBody(t, meal), "application/json")
+	_ = json.NewDecoder(w.Body).Decode(&created)
+	if created.HasPhoto {
+		t.Fatal("a meal without a photo says it has one")
+	}
+	if w := do(t, h, 7, "GET", fmt.Sprintf("/api/meals/%d/photo", created.ID), nil, ""); w.Code != http.StatusNotFound {
+		t.Fatalf("no photo: %d", w.Code)
+	}
+}

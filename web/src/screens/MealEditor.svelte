@@ -6,6 +6,7 @@
   import { blankItem, grams, kcal, sumTotals } from "../lib/nutrition";
   import { atTime, sameDay, timeValue } from "../lib/day";
   import { confirm, haptic, hapticSuccess } from "../lib/telegram";
+  import { base64, thumbnail } from "../lib/image";
 
   let {
     day,
@@ -91,13 +92,24 @@
     };
     try {
       if (meal) await api.updateMeal(meal.id, body);
-      else await api.createMeal(body);
+      else await api.createMeal({ ...body, photo: await preview() });
       hapticSuccess();
       onDone(meal ? "Сохранено" : "Записано");
     } catch (e) {
       error = (e as Error).message;
     } finally {
       busy = false;
+    }
+  }
+
+  // The first photo, small, for the diary. Only a nicety: without it the
+  // meal still saves.
+  async function preview(): Promise<string | undefined> {
+    if (!photos?.length) return undefined;
+    try {
+      return await base64(await thumbnail(photos[0]));
+    } catch {
+      return undefined;
     }
   }
 

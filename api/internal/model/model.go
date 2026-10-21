@@ -61,6 +61,7 @@ type Meal struct {
 	Title     string    `json:"title"`
 	Note      string    `json:"note"`
 	Items     []Item    `json:"items"`
+	HasPhoto  bool      `json:"hasPhoto"` // a preview is at /api/meals/{id}/photo
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 }
