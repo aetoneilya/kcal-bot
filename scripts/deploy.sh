@@ -5,16 +5,19 @@
 #   scripts/deploy.sh            # build, back up the database, swap, restart
 #   HOST=root@other scripts/deploy.sh
 #
+# The host comes from HOST, else from DEPLOY_HOST in the local .env.
+#
 # The previous binary and web build stay next to the new ones as *.old. If
 # the restarted service does not answer /api/health, they are put back.
 set -euo pipefail
 
-HOST="${HOST:-root@your-vps}"
 APP=/opt/kcal-bot
 DB=/var/lib/kcal-bot/kcal.db
 HEALTH=http://127.0.0.1:8098/api/health
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
+HOST="${HOST:-$(sed -n 's/^DEPLOY_HOST=//p' "$root/.env" 2>/dev/null)}"
+: "${HOST:?set HOST or DEPLOY_HOST in .env, e.g. root@your-vps}"
 out="$(mktemp -d)"
 trap 'rm -rf "$out"' EXIT
 
