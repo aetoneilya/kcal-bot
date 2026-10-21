@@ -1,0 +1,9 @@
+**/node_modules
+web/dist
+bin
+backups
+*.db
+*.db-wal
+*.db-shm
+.env
+.git

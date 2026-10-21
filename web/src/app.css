@@ -1,0 +1,263 @@
+/*
+ * Colours come from Telegram: the SDK sets --tg-theme-* on <html> to match
+ * the user's theme, light or dark. The fallbacks are only for a plain browser
+ * during development.
+ *
+ * Colour lives on data: the accent marks the one primary action, and the
+ * three macro hues appear only where macros are drawn. Everything else is
+ * neutral.
+ */
+
+:root {
+  --bg: var(--tg-theme-secondary-bg-color, #f2f2f6);
+  --card: var(--tg-theme-section-bg-color, var(--tg-theme-bg-color, #ffffff));
+  --text: var(--tg-theme-text-color, #121216);
+  --hint: var(--tg-theme-hint-color, #85858c);
+  --accent: var(--tg-theme-button-color, #2f7cf6);
+  --accent-text: var(--tg-theme-button-text-color, #ffffff);
+  --danger: var(--tg-theme-destructive-text-color, #e5484d);
+  --warn: #c97f06;
+  --line: color-mix(in srgb, var(--hint) 22%, transparent);
+  --line-strong: color-mix(in srgb, var(--hint) 45%, transparent);
+  --field: color-mix(in srgb, var(--hint) 12%, transparent);
+  --skeleton: color-mix(in srgb, var(--hint) 16%, transparent);
+
+  --protein: #e8606f;
+  --fat: #e6a124;
+  --carbs: #2fa58a;
+
+  /* A finished day against the target: short, on target, over. */
+  --under: #4f8ff0;
+  --ok: #3aa864;
+  --over: var(--warn);
+
+  --r: 16px;
+  --r-control: 12px;
+  --gutter: 16px;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Roboto", sans-serif;
+  /* The brand voice: rounded figures and titles where the platform has them. */
+  --font-round: ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, system-ui, "Roboto", sans-serif;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: var(--tg-theme-secondary-bg-color, #0e0e11);
+    --card: var(--tg-theme-section-bg-color, var(--tg-theme-bg-color, #1c1c21));
+    --text: var(--tg-theme-text-color, #f3f3f6);
+    --warn: #f0a93a;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  caret-color: var(--accent);
+  overscroll-behavior-y: none;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+::-webkit-scrollbar {
+  display: none;
+}
+
+h1,
+h2 {
+  margin: 0;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+  background: var(--field);
+  border: 1px solid transparent;
+  border-radius: var(--r-control);
+  padding: 10px 12px;
+  width: 100%;
+  outline: none;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--hint);
+  opacity: 1;
+}
+
+input:focus,
+textarea:focus {
+  border-color: var(--accent);
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* A grouped list: one surface, rows split by hairlines inset past the edge. */
+.group {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--card);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+
+.group > li {
+  position: relative;
+}
+
+.group > li + li::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 0;
+  height: 1px;
+  background: var(--line);
+}
+
+.card {
+  background: var(--card);
+  border-radius: var(--r);
+  padding: 16px;
+}
+
+.section-title {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--hint);
+  padding: 0 16px 6px;
+}
+
+.primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 50px;
+  padding: 0 16px;
+  border-radius: 14px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+  font-size: 17px;
+  transition: transform 0.12s var(--ease-out), opacity 0.15s;
+}
+
+.primary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: var(--r-control);
+  color: var(--accent);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.ghost:active:not(:disabled) {
+  background: var(--field);
+}
+
+.hint {
+  color: var(--hint);
+  font-size: 14px;
+}
+
+.error {
+  color: var(--danger);
+  font-size: 14px;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+.round {
+  font-family: var(--font-round);
+}
+
+.skeleton {
+  display: inline-block;
+  background: var(--skeleton);
+  border-radius: 6px;
+}
+
+/* The bottom bar every screen pins its main action into. */
+.dock {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin: 16px calc(-1 * var(--gutter)) 0;
+  padding: 10px var(--gutter) calc(10px + var(--safe-bottom));
+  background: var(--bg);
+  display: grid;
+  gap: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
