@@ -38,7 +38,10 @@ type Config struct {
 	// DailySpendLimit caps what one user's model calls may cost per UTC day,
 	// in USD; 0 means no cap. Only enforceable with a priced estimator.
 	DailySpendLimit float64
-	// Notifier hears about new people and spent budgets. Nil drops both.
+	// TotalDailySpendLimit caps everyone's model calls together per UTC day,
+	// in USD; 0 means no cap. It stops many accounts from adding up to a bill.
+	TotalDailySpendLimit float64
+	// Notifier hears about new people and spent budgets. Nil drops them.
 	Notifier Notifier
 	// AllowedOrigin is the single browser origin permitted cross-origin calls
 	// in production. Empty means same-origin only. Ignored in DevMode.
@@ -53,6 +56,7 @@ type Config struct {
 type Notifier interface {
 	NewUser(ctx context.Context, user model.User)
 	SpendLimitReached(ctx context.Context, user model.User, spent, limit float64)
+	TotalSpendLimitReached(ctx context.Context, spent, limit float64)
 }
 
 type Server struct {
@@ -234,6 +238,15 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusTooManyRequests, "на сегодня лимит распознаваний исчерпан — можно ввести вручную")
 		return
 	}
+	totalBefore, err := s.st.TotalSpentToday(r.Context())
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	if s.cfg.TotalDailySpendLimit > 0 && totalBefore >= s.cfg.TotalDailySpendLimit {
+		writeError(w, http.StatusTooManyRequests, "распознавание на сегодня приостановлено — можно ввести вручную")
+		return
+	}
 	if err := s.st.TakeAnalysis(r.Context(), user.ID, s.cfg.DailyLimit); err != nil {
 		s.fail(w, r, err)
 		return
@@ -253,7 +266,7 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	started := time.Now()
 	result, err := s.estimator.Estimate(ctx, in)
-	s.recordSpend(ctx, user, spent, result.Cost)
+	s.recordSpend(ctx, user, spent, totalBefore, result.Cost)
 	draft := result.Draft
 	if err != nil {
 		// A failure on our side (or the model's) should not eat the allowance.
@@ -281,9 +294,9 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 }
 
 // recordSpend adds a call's cost to the user's day and tells the owner the
-// moment that day's total crosses the cap. The cap is checked before a call,
-// so the crossing call is the last one that day.
-func (s *Server) recordSpend(ctx context.Context, user model.User, before, cost float64) {
+// moment the user's or everyone's total crosses its cap. Caps are checked
+// before a call, so the crossing call is the last one that day.
+func (s *Server) recordSpend(ctx context.Context, user model.User, before, totalBefore, cost float64) {
 	if cost <= 0 {
 		return
 	}
@@ -292,9 +305,16 @@ func (s *Server) recordSpend(ctx context.Context, user model.User, before, cost 
 		s.cfg.Log.Error("could not record spend", "user", user.ID, "usd", cost, "err", err)
 		return
 	}
-	limit := s.cfg.DailySpendLimit
-	if limit > 0 && before < limit && total >= limit && s.cfg.Notifier != nil {
+	if s.cfg.Notifier == nil {
+		return
+	}
+	if limit := s.cfg.DailySpendLimit; limit > 0 && before < limit && total >= limit {
 		s.cfg.Notifier.SpendLimitReached(ctx, user, total, limit)
+	}
+	// Concurrent calls can each see the old total; the one that pushes it
+	// over announces it, and a rare duplicate notice is harmless.
+	if limit := s.cfg.TotalDailySpendLimit; limit > 0 && totalBefore < limit && totalBefore+cost >= limit {
+		s.cfg.Notifier.TotalSpendLimitReached(ctx, totalBefore+cost, limit)
 	}
 }
 

@@ -115,6 +115,14 @@ func main() {
 		}
 	}
 
+	totalSpendLimit := 5.0
+	if raw := os.Getenv("DAILY_TOTAL_SPEND_LIMIT_USD"); raw != "" {
+		if totalSpendLimit, err = strconv.ParseFloat(raw, 64); err != nil || totalSpendLimit < 0 {
+			log.Error("DAILY_TOTAL_SPEND_LIMIT_USD must be a non-negative number of dollars", "value", raw)
+			os.Exit(1)
+		}
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -157,16 +165,17 @@ func main() {
 	srv := &http.Server{
 		Addr: *addr,
 		Handler: server.New(st, estimator, server.Config{
-			BotToken:        botToken,
-			DevMode:         *devMode,
-			DevUser:         model.User{ID: 1, Username: "dev", FirstName: "Dev"},
-			Allowed:         allowed,
-			DailyLimit:      dailyLimit,
-			DailySpendLimit: spendLimit,
-			Notifier:        notifier,
-			AllowedOrigin:   *origin,
-			StaticDir:       *staticDir,
-			Log:             log,
+			BotToken:             botToken,
+			DevMode:              *devMode,
+			DevUser:              model.User{ID: 1, Username: "dev", FirstName: "Dev"},
+			Allowed:              allowed,
+			DailyLimit:           dailyLimit,
+			DailySpendLimit:      spendLimit,
+			TotalDailySpendLimit: totalSpendLimit,
+			Notifier:             notifier,
+			AllowedOrigin:        *origin,
+			StaticDir:            *staticDir,
+			Log:                  log,
 		}).Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
@@ -174,7 +183,7 @@ func main() {
 	serverErr := make(chan error, 1)
 	go func() {
 		log.Info("listening", "addr", *addr, "db", *dbPath, "static", *staticDir,
-			"estimator", estimator.Name(), "daily_limit", dailyLimit, "daily_spend_usd", spendLimit, "owner", ownerID)
+			"estimator", estimator.Name(), "daily_limit", dailyLimit, "daily_spend_usd", spendLimit, "daily_total_spend_usd", totalSpendLimit, "owner", ownerID)
 		serverErr <- srv.ListenAndServe()
 	}()
 

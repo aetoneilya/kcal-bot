@@ -65,6 +65,21 @@ func (o *Owner) SpendLimitReached(_ context.Context, user model.User, spent, lim
 		describe(user), spent, limit), user.ID)
 }
 
+// TotalSpendLimitReached tells the owner everyone's calls together hit the cap.
+func (o *Owner) TotalSpendLimitReached(_ context.Context, spent, limit float64) {
+	if o == nil || o.ID == 0 {
+		return
+	}
+	text := fmt.Sprintf("Общие траты на модель сегодня: $%.2f при лимите $%.2f. Распознавание остановлено для всех до завтра (UTC); ручной ввод работает.", spent, limit)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := o.Client.SendMessage(ctx, telegram.SendMessageRequest{ChatID: o.ID, Text: text}); err != nil {
+			o.log().Warn("could not notify the owner", "err", err)
+		}
+	}()
+}
+
 func describe(user model.User) string {
 	name := strings.TrimSpace(user.FirstName)
 	if name == "" {

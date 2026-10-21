@@ -55,6 +55,7 @@ func (s *stubEstimator) Estimate(_ context.Context, in estimate.Input) (estimate
 type recordingNotifier struct {
 	newUsers []int64
 	spent    []float64
+	total    []float64
 }
 
 func (n *recordingNotifier) NewUser(_ context.Context, user model.User) {
@@ -63,6 +64,10 @@ func (n *recordingNotifier) NewUser(_ context.Context, user model.User) {
 
 func (n *recordingNotifier) SpendLimitReached(_ context.Context, _ model.User, spent, _ float64) {
 	n.spent = append(n.spent, spent)
+}
+
+func (n *recordingNotifier) TotalSpendLimitReached(_ context.Context, spent, _ float64) {
+	n.total = append(n.total, spent)
 }
 
 func newTestServer(t *testing.T, est estimate.Estimator, cfg Config) http.Handler {
@@ -234,6 +239,24 @@ func TestSpendLimitStopsAnalysisAndNotifiesOnce(t *testing.T) {
 	body, ct := analyzeForm(t, nil, "яблоко")
 	if w := do(t, h, 8, "POST", "/api/analyze", body, ct); w.Code != http.StatusOK {
 		t.Fatalf("another user hit someone else's cap: %d", w.Code)
+	}
+}
+
+func TestTotalSpendLimitStopsEveryone(t *testing.T) {
+	notifier := &recordingNotifier{}
+	est := &stubEstimator{cost: 0.4}
+	h := newTestServer(t, est, Config{DailySpendLimit: 1, TotalDailySpendLimit: 1, Notifier: notifier})
+	for i, c := range []struct {
+		user int64
+		want int
+	}{{7, http.StatusOK}, {8, http.StatusOK}, {9, http.StatusOK}, {10, http.StatusTooManyRequests}} {
+		body, ct := analyzeForm(t, nil, "яблоко")
+		if w := do(t, h, c.user, "POST", "/api/analyze", body, ct); w.Code != c.want {
+			t.Fatalf("call %d: %d, want %d", i+1, w.Code, c.want)
+		}
+	}
+	if len(notifier.total) != 1 || len(notifier.spent) != 0 {
+		t.Fatalf("want one total-cap notice and no per-user ones, got %v / %v", notifier.total, notifier.spent)
 	}
 }
 

@@ -160,6 +160,14 @@ func (s *Store) AddSpend(ctx context.Context, userID int64, usd float64) (float6
 	return float64(total) / 1e6, nil
 }
 
+// TotalSpentToday is everyone's model spend so far today, in USD.
+func (s *Store) TotalSpentToday(ctx context.Context) (float64, error) {
+	var micros int64
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(SUM(cost_micros), 0) FROM analyze_usage WHERE day = ?`, s.today()).Scan(&micros)
+	return float64(micros) / 1e6, err
+}
+
 // SpentToday is the person's model spend so far today, in USD.
 func (s *Store) SpentToday(ctx context.Context, userID int64) (float64, error) {
 	var micros int64
