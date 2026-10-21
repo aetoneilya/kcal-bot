@@ -1,5 +1,6 @@
 // Package telegram is the thin Bot API client kcal-bot needs: send and edit a
-// message, long-poll updates, answer a button press, set the menu button.
+// message, long-poll updates, answer a button press, download a photo, set
+// the menu button and the bot's descriptions.
 //
 // The bot token lives in every request URL, so no error leaving this package
 // may carry that URL — net/http's *url.Error would, and it is unwrapped.
@@ -213,6 +214,17 @@ func (c *Client) SetChatMenuButton(ctx context.Context, text, appURL string) err
 			"web_app": WebAppInfo{URL: appURL},
 		},
 	}, nil)
+}
+
+// SetMyDescription sets the text shown in an empty chat with the bot.
+func (c *Client) SetMyDescription(ctx context.Context, text string) error {
+	return c.call(ctx, "setMyDescription", map[string]any{"description": text}, nil)
+}
+
+// SetMyShortDescription sets the text on the bot's profile and in shared
+// links.
+func (c *Client) SetMyShortDescription(ctx context.Context, text string) error {
+	return c.call(ctx, "setMyShortDescription", map[string]any{"short_description": text}, nil)
 }
 
 func (c *Client) httpClient() *http.Client {
