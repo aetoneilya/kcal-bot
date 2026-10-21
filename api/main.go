@@ -164,9 +164,6 @@ func main() {
 		}
 	}
 
-	// Without the public URL the bot still answers (so people can send you
-	// their id), just without the Open button.
-	botDone := make(chan struct{})
 	client := &telegram.Client{Token: botToken}
 	var owner *bot.Owner
 	var notifier server.Notifier
@@ -174,8 +171,30 @@ func main() {
 		owner = &bot.Owner{Client: client, ID: ownerID, Log: log}
 		notifier = owner
 	}
+
+	api := server.New(st, estimator, server.Config{
+		BotToken:             botToken,
+		DevMode:              *devMode,
+		DevUser:              model.User{ID: 1, Username: "dev", FirstName: "Dev"},
+		Allowed:              allowed,
+		DailyLimit:           dailyLimit,
+		DailySpendLimit:      spendLimit,
+		TotalDailySpendLimit: totalSpendLimit,
+		Notifier:             notifier,
+		Treats:               gifts,
+		Products:             &foodfacts.Client{UserAgent: "KalorieKitten/1.0 (+" + *origin + ")"},
+		AllowedOrigin:        *origin,
+		StaticDir:            *staticDir,
+		Log:                  log,
+	})
+	srv := &http.Server{Addr: *addr, Handler: api.Handler(), ReadHeaderTimeout: 10 * time.Second}
+
+	// Without the public URL the bot still answers (so people can send you
+	// their id), just without the Open button.
+	botDone := make(chan struct{})
 	if !*devMode {
-		launcher := &bot.Bot{Client: client, AppURL: *origin, Allowed: allowed, Users: st, Owner: owner, Log: log}
+		launcher := &bot.Bot{Client: client, AppURL: *origin, Allowed: allowed, Users: st, Owner: owner,
+			Analyzer: api.Analyzer(), Meals: st, Treats: gifts, Log: log}
 		reminders := &bot.Reminders{Client: client, Store: st, AppURL: *origin, Treats: gifts, Log: log}
 		go reminders.Run(ctx)
 		go func() {
@@ -184,26 +203,6 @@ func main() {
 		}()
 	} else {
 		close(botDone)
-	}
-
-	srv := &http.Server{
-		Addr: *addr,
-		Handler: server.New(st, estimator, server.Config{
-			BotToken:             botToken,
-			DevMode:              *devMode,
-			DevUser:              model.User{ID: 1, Username: "dev", FirstName: "Dev"},
-			Allowed:              allowed,
-			DailyLimit:           dailyLimit,
-			DailySpendLimit:      spendLimit,
-			TotalDailySpendLimit: totalSpendLimit,
-			Notifier:             notifier,
-			Treats:               gifts,
-			Products:             &foodfacts.Client{UserAgent: "KalorieKitten/1.0 (+" + *origin + ")"},
-			AllowedOrigin:        *origin,
-			StaticDir:            *staticDir,
-			Log:                  log,
-		}).Handler(),
-		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	serverErr := make(chan error, 1)

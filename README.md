@@ -30,6 +30,7 @@ Both real backends use the same prompt and JSON schema (`api/internal/estimate`)
 ## Beyond the photo
 
 - **Several photos per meal** — the plate and its label together; up to three.
+- **Photo or text in the chat** — a photo (an album of up to three), or any text that is not a command ("овсянка 200 г с бананом"), sent to the bot gets the same estimate, within the same limits (`api/internal/analysis`), answered with the breakdown, buttons for the model's question, and Save / Cancel. Drafts wait in memory; a restart forgets them.
 - **Barcode** — a photo of the barcode is decoded in the browser and looked up in Open Food Facts; no model call.
 - **Ещё раз** — meals eaten in the last 60 days, grouped by their foods, most frequent first; a tap copies one.
 - **Норма** — sex, birth year, height, weight, goal weight, activity and pace give a daily target (Mifflin–St Jeor with guard rails: a deficit of at most a quarter, a floor of 1200/1500 kcal). The formula lives in `web/src/lib/targets.ts` and, for the bot, in `api/internal/model/targets.go`; their tests pin the same numbers.

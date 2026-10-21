@@ -1,6 +1,7 @@
 // Package bot is the launch flow: /start answers with a button that opens the
-// Mini App, and the menu button points at it too. Everything else happens in
-// the app — except the owner's controls: notices about new people and
+// Mini App, and the menu button points at it too. A photo sent to the bot is
+// estimated and saved from the chat (see meals.go). Everything else happens
+// in the app — except the owner's controls: notices about new people and
 // spend, with block and unblock buttons, and /block, /unblock commands.
 package bot
 
@@ -16,6 +17,7 @@ import (
 	"github.com/aetoneilya/kcal-bot/api/internal/model"
 	"github.com/aetoneilya/kcal-bot/api/internal/store"
 	"github.com/aetoneilya/kcal-bot/api/internal/telegram"
+	"github.com/aetoneilya/kcal-bot/api/internal/treats"
 )
 
 // Users is the part of the store the bot needs.
@@ -37,11 +39,21 @@ type Bot struct {
 	Users Users
 	// Owner gets notices and may block people. Nil or a zero ID disables it.
 	Owner *Owner
-	Log   *slog.Logger
+	// Analyzer and Meals turn photos sent to the bot into diary entries.
+	// With either nil, a photo gets the usual "open the app" answer.
+	Analyzer Analyzer
+	Meals    Meals
+	// Treats adds a compliment when a meal is saved from the chat.
+	Treats *treats.Treats
+	Log    *slog.Logger
 	// PollTimeout is the getUpdates long-poll length in seconds. Default 30.
 	PollTimeout int
 	// RetryDelay is the pause after a failed poll. Default 3s.
 	RetryDelay time.Duration
+	// AlbumDelay is how long to wait for the rest of an album. Default 1.5s.
+	AlbumDelay time.Duration
+
+	drafts drafts
 }
 
 const (
@@ -121,8 +133,8 @@ func (b *Bot) Handle(ctx context.Context, update telegram.Update) {
 		return
 	}
 	blocked := false
+	user := model.User{ID: message.From.ID, Username: message.From.Username, FirstName: message.From.FirstName}
 	if b.Users != nil {
-		user := model.User{ID: message.From.ID, Username: message.From.Username, FirstName: message.From.FirstName}
 		account, err := b.Users.EnsureUser(ctx, user)
 		if err != nil {
 			b.log().Warn("could not record user", "user", user.ID, "err", err)
@@ -141,6 +153,12 @@ func (b *Bot) Handle(ctx context.Context, update telegram.Update) {
 		request.Text = fmt.Sprintf("Бот пока закрытый. Попроси владельца добавить твой id: %d", message.From.ID)
 	case b.AppURL == "":
 		request.Text = fmt.Sprintf(noAppText, message.From.ID)
+	case len(message.Photo) > 0 && b.Analyzer != nil && b.Meals != nil:
+		b.receivePhoto(ctx, message, user)
+		return
+	case isDescription(message.Text) && b.Analyzer != nil && b.Meals != nil:
+		b.receiveText(ctx, message, user)
+		return
 	case strings.HasPrefix(strings.TrimSpace(message.Text), "/start"):
 		request.Text = welcomeText
 		request.ReplyMarkup = telegram.OpenAppKeyboard(buttonText, b.AppURL)
@@ -155,8 +173,13 @@ func (b *Bot) Handle(ctx context.Context, update telegram.Update) {
 
 func (b *Bot) isOwner(id int64) bool { return b.Owner != nil && b.Owner.ID != 0 && id == b.Owner.ID }
 
-// handlePress serves the owner's Block / Unblock buttons on notices.
+// handlePress serves the buttons under a meal from a photo, and the owner's
+// Block / Unblock buttons on notices.
 func (b *Bot) handlePress(ctx context.Context, press *telegram.CallbackQuery) {
+	if strings.HasPrefix(press.Data, mealData) && b.Meals != nil {
+		b.handleMealPress(ctx, press)
+		return
+	}
 	answer := func(text string) {
 		if err := b.Client.AnswerCallbackQuery(ctx, press.ID, text); err != nil {
 			b.log().Warn("could not answer a button press", "err", err)

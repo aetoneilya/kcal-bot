@@ -97,9 +97,22 @@ type Chat struct {
 
 type Message struct {
 	MessageID int64  `json:"message_id"`
+	Date      int64  `json:"date"` // unix seconds
 	Text      string `json:"text"`
 	Chat      Chat   `json:"chat"`
 	From      *User  `json:"from"`
+	// Photo is one picture in several sizes, smallest first.
+	Photo   []PhotoSize `json:"photo"`
+	Caption string      `json:"caption"`
+	// MediaGroupID ties the photos of one album; each arrives as its own
+	// message.
+	MediaGroupID string `json:"media_group_id"`
+}
+
+type PhotoSize struct {
+	FileID string `json:"file_id"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
 }
 
 // CallbackQuery is a press on a button with CallbackData.
@@ -118,6 +131,55 @@ type Update struct {
 
 func (c *Client) SendMessage(ctx context.Context, request SendMessageRequest) error {
 	return c.call(ctx, "sendMessage", request, nil)
+}
+
+// SendMessageID sends like SendMessage and returns the new message's id, to
+// edit it later.
+func (c *Client) SendMessageID(ctx context.Context, request SendMessageRequest) (int64, error) {
+	var sent Message
+	err := c.call(ctx, "sendMessage", request, &sent)
+	return sent.MessageID, err
+}
+
+// SendChatAction shows "typing…" in the chat for a few seconds.
+func (c *Client) SendChatAction(ctx context.Context, chatID int64, action string) error {
+	return c.call(ctx, "sendChatAction", map[string]any{"chat_id": chatID, "action": action}, nil)
+}
+
+// maxDownload is the Bot API's own limit on files a bot can fetch.
+const maxDownload = 20 << 20
+
+// DownloadFile fetches a file someone sent, by its file_id.
+func (c *Client) DownloadFile(ctx context.Context, fileID string) ([]byte, error) {
+	var file struct {
+		FilePath string `json:"file_path"`
+	}
+	if err := c.call(ctx, "getFile", map[string]any{"file_id": fileID}, &file); err != nil {
+		return nil, err
+	}
+	if file.FilePath == "" {
+		return nil, errors.New("telegram: getFile returned no path")
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL()+"/file/bot"+c.Token+"/"+file.FilePath, nil)
+	if err != nil {
+		return nil, fmt.Errorf("telegram: build download: %w", redact(err))
+	}
+	response, err := c.httpClient().Do(request)
+	if err != nil {
+		return nil, fmt.Errorf("telegram: download: %w", redact(err))
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return nil, &APIError{Status: response.StatusCode, Description: "download failed"}
+	}
+	data, err := io.ReadAll(io.LimitReader(response.Body, maxDownload+1))
+	if err != nil {
+		return nil, fmt.Errorf("telegram: download: %w", redact(err))
+	}
+	if len(data) > maxDownload {
+		return nil, errors.New("telegram: file too large")
+	}
+	return data, nil
 }
 
 func (c *Client) EditMessageText(ctx context.Context, request EditMessageTextRequest) error {

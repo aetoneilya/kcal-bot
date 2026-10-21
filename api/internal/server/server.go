@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aetoneilya/kcal-bot/api/internal/analysis"
 	"github.com/aetoneilya/kcal-bot/api/internal/estimate"
 	"github.com/aetoneilya/kcal-bot/api/internal/foodfacts"
 	"github.com/aetoneilya/kcal-bot/api/internal/model"
@@ -76,6 +77,7 @@ type Notifier interface {
 type Server struct {
 	st        *store.Store
 	estimator estimate.Estimator
+	analyzer  *analysis.Analyzer
 	cfg       Config
 }
 
@@ -83,7 +85,24 @@ func New(st *store.Store, estimator estimate.Estimator, cfg Config) *Server {
 	if cfg.Log == nil {
 		cfg.Log = slog.Default()
 	}
-	return &Server{st: st, estimator: estimator, cfg: cfg}
+	analyzer := &analysis.Analyzer{
+		Store:                st,
+		Estimator:            estimator,
+		DailyLimit:           cfg.DailyLimit,
+		DailySpendLimit:      cfg.DailySpendLimit,
+		TotalDailySpendLimit: cfg.TotalDailySpendLimit,
+		Log:                  cfg.Log,
+	}
+	if cfg.Notifier != nil {
+		analyzer.Notifier = cfg.Notifier
+	}
+	return &Server{st: st, estimator: estimator, analyzer: analyzer, cfg: cfg}
+}
+
+// Analyzer is the server's estimate runner with its limits, for the bot to
+// share.
+func (s *Server) Analyzer() *analysis.Analyzer {
+	return s.analyzer
 }
 
 // Uploads are downscaled in the browser to ~200 KB; the cap only stops abuse.
@@ -92,13 +111,8 @@ const (
 	maxJSON   = 1 << 20
 )
 
-// Portion history sent to the model: recent enough to reflect current habits,
-// small enough to keep each call cheap (40 lines is ~600 input tokens).
-const (
-	historyWindow   = 60 * 24 * time.Hour
-	historyScan     = 500
-	historyPortions = 40
-)
+// Meals worth repeating are looked for this far back.
+const regularWindow = 60 * 24 * time.Hour
 
 func (s *Server) Handler() http.Handler {
 	api := http.NewServeMux()
@@ -366,67 +380,23 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user := userFrom(r.Context())
-	spent, err := s.st.SpentToday(r.Context(), user.ID)
-	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	if s.cfg.DailySpendLimit > 0 && spent >= s.cfg.DailySpendLimit {
+	draft, err := s.analyzer.Analyze(r.Context(), userFrom(r.Context()), in)
+	switch {
+	case errors.Is(err, analysis.ErrSpendLimit):
 		writeError(w, http.StatusTooManyRequests, "на сегодня лимит распознаваний исчерпан — можно ввести вручную")
 		return
-	}
-	totalBefore, err := s.st.TotalSpentToday(r.Context())
-	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	if s.cfg.TotalDailySpendLimit > 0 && totalBefore >= s.cfg.TotalDailySpendLimit {
+	case errors.Is(err, analysis.ErrPaused):
 		writeError(w, http.StatusTooManyRequests, "распознавание на сегодня приостановлено — можно ввести вручную")
 		return
-	}
-	if err := s.st.TakeAnalysis(r.Context(), user.ID, s.cfg.DailyLimit); err != nil {
-		s.fail(w, r, err)
+	case errors.Is(err, estimate.ErrUnusable):
+		writeError(w, http.StatusBadGateway, "не получилось разобрать блюдо — попробуй другое фото или опиши словами")
 		return
-	}
-
-	// The person's own corrected portions anchor the model's weight guesses.
-	// Without them the estimate is still useful, so a failure only logs.
-	recent, err := s.st.RecentItems(r.Context(), user.ID, time.Now().Add(-historyWindow), historyScan)
-	if err != nil {
-		s.cfg.Log.Warn("could not load portion history", "user", user.ID, "err", err)
-	}
-	in.History = estimate.Portions(recent, historyPortions)
-
-	// Detach from the request so a closed Mini App does not waste a call we
-	// already paid for halfway, but still bound it.
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 90*time.Second)
-	defer cancel()
-	started := time.Now()
-	result, err := s.estimator.Estimate(ctx, in)
-	s.recordSpend(ctx, user, spent, totalBefore, result.Cost)
-	draft := result.Draft
-	if err != nil {
-		// A failure on our side (or the model's) should not eat the allowance.
-		if refundErr := s.st.RefundAnalysis(context.WithoutCancel(r.Context()), user.ID); refundErr != nil {
-			s.cfg.Log.Error("could not refund analysis", "user", user.ID, "err", refundErr)
-		}
-		s.cfg.Log.Error("estimate failed", "estimator", s.estimator.Name(), "user", user.ID, "ms", time.Since(started).Milliseconds(), "err", err)
-		if errors.Is(err, estimate.ErrUnusable) {
-			writeError(w, http.StatusBadGateway, "не получилось разобрать блюдо — попробуй другое фото или опиши словами")
-			return
-		}
+	case errors.Is(err, analysis.ErrModel):
 		writeError(w, http.StatusBadGateway, "модель не ответила — попробуй ещё раз")
 		return
-	}
-	s.cfg.Log.Info("estimated", "estimator", s.estimator.Name(), "user", user.ID,
-		"items", len(draft.Items), "photos", len(in.Photos), "ms", time.Since(started).Milliseconds(),
-		"usd", fmt.Sprintf("%.4f", result.Cost), "tokens_in", result.Usage.Input, "tokens_out", result.Usage.Output,
-		"history", len(in.History))
-	if len(draft.Items) == 0 {
-		// An empty plate is either a non-food photo or a model misfire; the
-		// answer text tells which. It holds no personal data beyond the meal.
-		s.cfg.Log.Warn("estimate found no food", "user", user.ID, "raw", truncate(result.Raw, 500))
+	case err != nil:
+		s.fail(w, r, err)
+		return
 	}
 	writeJSON(w, http.StatusOK, draft)
 }
@@ -434,28 +404,6 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 // recordSpend adds a call's cost to the user's day and tells the owner the
 // moment the user's or everyone's total crosses its cap. Caps are checked
 // before a call, so the crossing call is the last one that day.
-func (s *Server) recordSpend(ctx context.Context, user model.User, before, totalBefore, cost float64) {
-	if cost <= 0 {
-		return
-	}
-	total, err := s.st.AddSpend(ctx, user.ID, cost)
-	if err != nil {
-		s.cfg.Log.Error("could not record spend", "user", user.ID, "usd", cost, "err", err)
-		return
-	}
-	if s.cfg.Notifier == nil {
-		return
-	}
-	if limit := s.cfg.DailySpendLimit; limit > 0 && before < limit && total >= limit {
-		s.cfg.Notifier.SpendLimitReached(ctx, user, total, limit)
-	}
-	// Concurrent calls can each see the old total; the one that pushes it
-	// over announces it, and a rare duplicate notice is harmless.
-	if limit := s.cfg.TotalDailySpendLimit; limit > 0 && totalBefore < limit && totalBefore+cost >= limit {
-		s.cfg.Notifier.TotalSpendLimitReached(ctx, totalBefore+cost, limit)
-	}
-}
-
 // readPhoto reads one uploaded file and sniffs its type from the bytes; the
 // declared Content-Type is the client's word and is not trusted.
 func readPhoto(header *multipart.FileHeader) (estimate.Photo, error) {
@@ -527,7 +475,7 @@ func (s *Server) handleBarcode(w http.ResponseWriter, r *http.Request) {
 
 // handleRegularMeals lists the meals worth offering to repeat.
 func (s *Server) handleRegularMeals(w http.ResponseWriter, r *http.Request) {
-	regulars, err := s.st.RegularMeals(r.Context(), userFrom(r.Context()).ID, time.Now().Add(-historyWindow), 12)
+	regulars, err := s.st.RegularMeals(r.Context(), userFrom(r.Context()).ID, time.Now().Add(-regularWindow), 12)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -719,11 +667,4 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 
 func writeError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, map[string]string{"error": message})
-}
-
-func truncate(s string, max int) string {
-	if r := []rune(s); len(r) > max {
-		return string(r[:max]) + "…"
-	}
-	return s
 }
