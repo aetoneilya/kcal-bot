@@ -5,8 +5,13 @@
   import { kcal as fmtKcal } from "../lib/nutrition";
   import { haptic, hapticSuccess } from "../lib/telegram";
   import Icon from "../components/Icon.svelte";
+  import WeightLog from "../components/WeightLog.svelte";
 
-  let { profile, onSaved }: { profile: Profile | null; onSaved: (profile: Profile) => void } = $props();
+  let {
+    profile,
+    onSaved,
+    onWeighed,
+  }: { profile: Profile | null; onSaved: (profile: Profile) => void; onWeighed: () => void } = $props();
 
   // Copied once: the form owns the edits until they are saved.
   const start = untrack(() => profile);
@@ -234,6 +239,16 @@
     {#if error}<p class="error">{error}</p>{/if}
     <button class="primary" onclick={save} disabled={busy || !result}>{busy ? "Сохраняю…" : "Сохранить"}</button>
   </div>
+
+  <WeightLog
+    {profile}
+    onChanged={(kg) => {
+      // The form copied the profile once; keep its weight in step, or
+      // saving the form would put the old weight back.
+      if (kg !== null) weightKg = kg;
+      onWeighed();
+    }}
+  />
 </div>
 
 <style>

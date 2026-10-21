@@ -7,7 +7,6 @@
   import MealEditor from "./screens/MealEditor.svelte";
   import ProfileScreen from "./screens/Profile.svelte";
   import Calendar from "./screens/Calendar.svelte";
-  import WeightScreen from "./screens/Weight.svelte";
   import Icon, { type IconName } from "./components/Icon.svelte";
   import CatOverlay from "./components/CatOverlay.svelte";
   import { api, type Draft, type Meal } from "./lib/api";
@@ -16,9 +15,9 @@
   import { haptic, inTelegram, onBack } from "./lib/telegram";
   import { Cats, complimentOfDay, pick, type Treats } from "./lib/treats";
 
-  // Four top-level sections live in the tab bar; adding and editing a meal
+  // Three top-level sections live in the tab bar; adding and editing a meal
   // are tasks pushed over them, with the tab bar hidden and Back to return.
-  type Tab = "today" | "calendar" | "weight" | "profile";
+  type Tab = "today" | "calendar" | "profile";
   type Task =
     | { name: "capture" }
     | { name: "editor"; meal?: Meal; draft?: Draft; note?: string; photos?: Blob[] };
@@ -26,7 +25,6 @@
   const tabs: { key: Tab; label: string; icon: IconName }[] = [
     { key: "today", label: "Дневник", icon: "list" },
     { key: "calendar", label: "Календарь", icon: "calendar" },
-    { key: "weight", label: "Вес", icon: "trend" },
     { key: "profile", label: "Норма", icon: "target" },
   ];
 
@@ -152,11 +150,10 @@
       }}
       onGoal={() => go("profile")}
     />
-  {:else if tab === "weight"}
-    <WeightScreen profile={profile ?? null} onChanged={loadProfile} />
   {:else}
     <ProfileScreen
       profile={profile ?? null}
+      onWeighed={loadProfile}
       onSaved={(saved) => {
         profile = saved;
         go("today");

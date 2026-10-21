@@ -4,10 +4,13 @@
   import { addDays, dayKey, fromDayKey, startOfDay } from "../lib/day";
   import type { Profile } from "../lib/targets";
   import { haptic, hapticSuccess } from "../lib/telegram";
-  import WeightChart from "../components/WeightChart.svelte";
-  import Icon from "../components/Icon.svelte";
+  import WeightChart from "./WeightChart.svelte";
+  import Icon from "./Icon.svelte";
 
-  let { profile, onChanged }: { profile: Profile | null; onChanged: () => void } = $props();
+  // The weigh-ins, at the bottom of the target screen. onChanged gets the
+  // newest weight after a save or delete; the server has already made it the
+  // profile's.
+  let { profile, onChanged }: { profile: Profile | null; onChanged: (latestKg: number | null) => void } = $props();
 
   const ranges = [
     { days: 30, label: "Месяц" },
@@ -69,7 +72,7 @@
       const saved = await api.saveWeight(todayKey, value);
       weights = [...weights.filter((w) => w.day !== saved.day), saved].sort((a, b) => a.day.localeCompare(b.day));
       hapticSuccess();
-      onChanged();
+      onChanged(weights[weights.length - 1]?.weightKg ?? null);
     } catch (e) {
       error = (e as Error).message;
     } finally {
@@ -82,15 +85,15 @@
     try {
       await api.deleteWeight(day);
       weights = weights.filter((w) => w.day !== day);
-      onChanged();
+      onChanged(weights[weights.length - 1]?.weightKg ?? null);
     } catch (e) {
       error = (e as Error).message;
     }
   }
 </script>
 
-<div class="screen">
-  <h1 class="round">Вес</h1>
+<section class="weight" aria-labelledby="weight-title">
+  <h2 id="weight-title" class="round">Вес</h2>
 
   <section class="card head">
     <div class="top">
@@ -153,20 +156,20 @@
       {/each}
     </ul>
   {/if}
-</div>
+</section>
 
 <style>
-  .screen {
+  .weight {
     display: flex;
     flex-direction: column;
     padding-bottom: 16px;
   }
 
-  h1 {
-    font-size: 22px;
+  h2 {
+    font-size: 20px;
     font-weight: 700;
     letter-spacing: -0.01em;
-    margin: 8px 0 14px;
+    margin: 28px 0 12px;
   }
 
   .head {
