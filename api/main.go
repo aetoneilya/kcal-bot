@@ -31,6 +31,7 @@ import (
 
 	"github.com/aetoneilya/kcal-bot/api/internal/bot"
 	"github.com/aetoneilya/kcal-bot/api/internal/estimate"
+	"github.com/aetoneilya/kcal-bot/api/internal/evalset"
 	"github.com/aetoneilya/kcal-bot/api/internal/foodfacts"
 	"github.com/aetoneilya/kcal-bot/api/internal/model"
 	"github.com/aetoneilya/kcal-bot/api/internal/server"
@@ -47,10 +48,25 @@ func main() {
 	staticDir := flag.String("static", os.Getenv("STATIC_DIR"), "directory with the built Mini App (web/dist) to serve at /; empty serves the API only")
 	probe := flag.String("probe", "", "estimate this photo once with the configured model, print the raw answer and cost, and exit")
 	probeNote := flag.String("note", "", "with -probe: the note to send alongside the photo")
+	evalDir := flag.String("eval", "", "run the configured model over a directory of weighed meals (see internal/evalset) and print the error report")
 	flag.Parse()
 
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
+	if *evalDir != "" {
+		cases, err := evalset.Load(*evalDir)
+		if err == nil {
+			var est estimate.Estimator
+			if est, err = newEstimator(context.Background(), *devMode); err == nil {
+				err = evalset.Run(context.Background(), est, cases, os.Stdout)
+			}
+		}
+		if err != nil {
+			log.Error("eval failed", "err", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if *probe != "" {
 		if err := runProbe(*probe, *probeNote, *devMode); err != nil {
 			log.Error("probe failed", "err", err)

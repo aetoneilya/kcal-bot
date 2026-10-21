@@ -9,3 +9,6 @@ backups/
 *.db
 *.db-wal
 *.db-shm
+
+# Weighed meals are personal photos; only the README is tracked
+evals/*/
