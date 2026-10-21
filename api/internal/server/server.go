@@ -91,6 +91,8 @@ func (s *Server) Handler() http.Handler {
 	api := http.NewServeMux()
 	api.HandleFunc("GET /api/me", s.handleMe)
 	api.HandleFunc("PUT /api/profile", s.handleSaveProfile)
+	api.HandleFunc("GET /api/reminders", s.handleGetReminders)
+	api.HandleFunc("PUT /api/reminders", s.handleSaveReminders)
 	api.HandleFunc("GET /api/weights", s.handleListWeights)
 	api.HandleFunc("PUT /api/weights/{day}", s.handleSaveWeight)
 	api.HandleFunc("DELETE /api/weights/{day}", s.handleDeleteWeight)
@@ -160,6 +162,31 @@ type profileRequest struct {
 	GoalWeightKg float64        `json:"goalWeightKg"`
 	Activity     model.Activity `json:"activity"`
 	PaceKgWeek   float64        `json:"paceKgWeek"`
+}
+
+func (s *Server) handleGetReminders(w http.ResponseWriter, r *http.Request) {
+	reminders, err := s.st.Reminders(r.Context(), userFrom(r.Context()).ID)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, reminders)
+}
+
+func (s *Server) handleSaveReminders(w http.ResponseWriter, r *http.Request) {
+	var body model.Reminders
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxJSON))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "request body is not valid reminder settings")
+		return
+	}
+	saved, err := s.st.SaveReminders(r.Context(), userFrom(r.Context()).ID, body)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, saved)
 }
 
 // handleListWeights takes from and to as YYYY-MM-DD, both inclusive.

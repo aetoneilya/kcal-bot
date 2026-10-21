@@ -72,6 +72,26 @@ func (p Profile) Validate(now time.Time) error {
 	return nil
 }
 
+// Reminders are the bot messages a person opted into, on their own clock.
+type Reminders struct {
+	TimeZone  string `json:"timeZone"`  // IANA name, e.g. Europe/Moscow
+	SummaryAt string `json:"summaryAt"` // HH:MM of the evening total; "" = off
+	Nudge     bool   `json:"nudge"`     // remind when nothing is logged by midday
+}
+
+// Validate checks the zone loads and the time is a clock time.
+func (r Reminders) Validate() error {
+	if _, err := time.LoadLocation(r.TimeZone); err != nil || r.TimeZone == "" {
+		return invalid("unknown time zone %q", r.TimeZone)
+	}
+	if r.SummaryAt != "" {
+		if _, err := time.Parse("15:04", r.SummaryAt); err != nil {
+			return invalid("summary time must be HH:MM")
+		}
+	}
+	return nil
+}
+
 // Weight is one weigh-in on a local calendar day.
 type Weight struct {
 	Day      string  `json:"day"` // YYYY-MM-DD, the phone's date

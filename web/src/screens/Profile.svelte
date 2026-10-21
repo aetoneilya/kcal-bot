@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { untrack } from "svelte";
-  import { api } from "../lib/api";
+  import { onMount, untrack } from "svelte";
+  import { api, type Reminders } from "../lib/api";
   import { activities, direction, limits, targets, type Activity, type Profile, type Sex } from "../lib/targets";
   import { kcal as fmtKcal } from "../lib/nutrition";
   import { haptic, hapticSuccess } from "../lib/telegram";
@@ -73,6 +73,35 @@
 
   const signed = (v: number) => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toLocaleString("ru-RU", { maximumFractionDigits: 2 });
   const thisYear = new Date().getFullYear();
+
+  // Reminders save as soon as they change: they are not part of the target.
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Moscow";
+  let reminders = $state<Reminders>({ timeZone: zone, summaryAt: "", nudge: false });
+  let summaryTime = $state("21:00");
+  let reminderError = $state("");
+
+  onMount(() => {
+    api
+      .reminders()
+      .then((r) => {
+        reminders = { ...r, timeZone: zone };
+        if (r.summaryAt) summaryTime = r.summaryAt;
+      })
+      .catch(() => {});
+  });
+
+  async function saveReminders(next: Partial<Reminders>) {
+    haptic();
+    const before = reminders;
+    reminders = { ...reminders, ...next, timeZone: zone };
+    reminderError = "";
+    try {
+      reminders = await api.saveReminders(reminders);
+    } catch (e) {
+      reminders = before;
+      reminderError = (e as Error).message;
+    }
+  }
 </script>
 
 <div class="screen">
@@ -134,6 +163,36 @@
       {dir === "lose" ? "0,5 кг в неделю — устойчивый темп; быстрее обычно уходит мышечная масса." : "Больше 0,5 кг в неделю набирается в основном жир."}
     </p>
   {/if}
+
+  <h2 class="section-title"><span>Сообщения от бота</span></h2>
+  <ul class="group">
+    <li class="row">
+      <span class="text">
+        <span>Итог дня</span>
+        <span class="sub">Сколько съедено против нормы</span>
+      </span>
+      {#if reminders.summaryAt}
+        <input class="num clock" type="time" bind:value={summaryTime} onchange={() => saveReminders({ summaryAt: summaryTime })} aria-label="Время итога" />
+      {/if}
+      <button
+        class="switch"
+        role="switch"
+        aria-checked={Boolean(reminders.summaryAt)}
+        aria-label="Итог дня"
+        onclick={() => saveReminders({ summaryAt: reminders.summaryAt ? "" : summaryTime })}
+      ><i></i></button>
+    </li>
+    <li class="row">
+      <span class="text">
+        <span>Напомнить записать</span>
+        <span class="sub">В 14:00, если за день ничего нет</span>
+      </span>
+      <button class="switch" role="switch" aria-checked={reminders.nudge} aria-label="Напомнить записать" onclick={() => saveReminders({ nudge: !reminders.nudge })}><i></i></button>
+    </li>
+  </ul>
+  <p class="foot">
+    {reminderError || `По твоему времени — ${zone.replace("_", " ")}.`}
+  </p>
 
   <section class="card result" aria-live="polite">
     {#if result}
@@ -253,6 +312,46 @@
     margin: 6px 16px 22px;
     font-size: 13px;
     color: var(--hint);
+  }
+
+  .clock {
+    width: 84px;
+    padding: 6px 8px;
+    text-align: center;
+  }
+
+  .clock::-webkit-calendar-picker-indicator {
+    display: none;
+  }
+
+  .switch {
+    position: relative;
+    flex: none;
+    width: 51px;
+    height: 31px;
+    border-radius: 16px;
+    background: var(--line-strong);
+    transition: background-color 0.2s;
+  }
+
+  .switch i {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 27px;
+    height: 27px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 2px 4px rgb(0 0 0 / 0.2);
+    transition: transform 0.2s var(--ease-out);
+  }
+
+  .switch[aria-checked="true"] {
+    background: var(--ok);
+  }
+
+  .switch[aria-checked="true"] i {
+    transform: translateX(20px);
   }
 
   .choice {

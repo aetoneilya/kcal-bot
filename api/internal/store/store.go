@@ -142,6 +142,81 @@ func (s *Store) SetBlocked(ctx context.Context, id int64, blocked bool) error {
 	return nil
 }
 
+// --- reminders ---------------------------------------------------------------
+
+// Reminders returns the person's reminder settings; all off before they set any.
+func (s *Store) Reminders(ctx context.Context, userID int64) (model.Reminders, error) {
+	var r model.Reminders
+	err := s.db.QueryRowContext(ctx, `SELECT time_zone, summary_at, nudge FROM reminders WHERE user_id = ?`, userID).
+		Scan(&r.TimeZone, &r.SummaryAt, &r.Nudge)
+	if errors.Is(err, sql.ErrNoRows) {
+		return model.Reminders{}, nil
+	}
+	return r, err
+}
+
+func (s *Store) SaveReminders(ctx context.Context, userID int64, r model.Reminders) (model.Reminders, error) {
+	if err := r.Validate(); err != nil {
+		return model.Reminders{}, err
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO reminders (user_id, time_zone, summary_at, nudge) VALUES (?, ?, ?, ?)
+		ON CONFLICT (user_id) DO UPDATE SET
+			time_zone = excluded.time_zone, summary_at = excluded.summary_at, nudge = excluded.nudge`,
+		userID, r.TimeZone, r.SummaryAt, r.Nudge)
+	if err != nil {
+		return model.Reminders{}, fmt.Errorf("save reminders: %w", err)
+	}
+	return r, nil
+}
+
+// Subscriber is one person with at least one reminder on.
+type Subscriber struct {
+	User           model.User
+	Reminders      model.Reminders
+	LastSummaryDay string
+	LastNudgeDay   string
+}
+
+// Subscribers lists everyone with a reminder on who is not blocked.
+func (s *Store) Subscribers(ctx context.Context) ([]Subscriber, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT u.id, u.username, u.first_name, r.time_zone, r.summary_at, r.nudge, r.last_summary_day, r.last_nudge_day
+		FROM reminders r JOIN users u ON u.id = r.user_id
+		WHERE (r.summary_at != '' OR r.nudge = 1) AND u.blocked_at IS NULL`)
+	if err != nil {
+		return nil, fmt.Errorf("query subscribers: %w", err)
+	}
+	defer rows.Close()
+	var subs []Subscriber
+	for rows.Next() {
+		var sub Subscriber
+		if err := rows.Scan(&sub.User.ID, &sub.User.Username, &sub.User.FirstName, &sub.Reminders.TimeZone,
+			&sub.Reminders.SummaryAt, &sub.Reminders.Nudge, &sub.LastSummaryDay, &sub.LastNudgeDay); err != nil {
+			return nil, err
+		}
+		subs = append(subs, sub)
+	}
+	return subs, rows.Err()
+}
+
+// MarkSent records that a reminder went out on a local day. kind is
+// "summary" or "nudge".
+func (s *Store) MarkSent(ctx context.Context, userID int64, kind, day string) error {
+	column := "last_summary_day"
+	if kind == "nudge" {
+		column = "last_nudge_day"
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE reminders SET `+column+` = ? WHERE user_id = ?`, day, userID)
+	return err
+}
+
+// StopReminders turns everything off, e.g. after the person blocked the bot.
+func (s *Store) StopReminders(ctx context.Context, userID int64) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE reminders SET summary_at = '', nudge = 0 WHERE user_id = ?`, userID)
+	return err
+}
+
 // --- weight log --------------------------------------------------------------
 
 // SaveWeight records the day's weigh-in, replacing an earlier one that day.

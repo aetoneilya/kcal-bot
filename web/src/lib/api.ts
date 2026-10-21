@@ -55,6 +55,13 @@ export interface Weight {
   weightKg: number;
 }
 
+/** Bot messages a person opted into, on their own clock. */
+export interface Reminders {
+  timeZone: string;
+  summaryAt: string; // "HH:MM", or "" for off
+  nudge: boolean;
+}
+
 export interface Me {
   id: number;
   firstName: string;
@@ -110,6 +117,9 @@ export const api = {
   },
 
   regularMeals: () => request<Regular[]>("/api/meals/regular"),
+
+  reminders: () => request<Reminders>("/api/reminders"),
+  saveReminders: (r: Reminders) => request<Reminders>("/api/reminders", json("PUT", r)),
 
   weights: (from: string, to: string) => request<Weight[]>(`/api/weights?from=${from}&to=${to}`),
   saveWeight: (day: string, weightKg: number) => request<Weight>(`/api/weights/${day}`, json("PUT", { weightKg })),

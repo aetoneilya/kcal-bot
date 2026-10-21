@@ -27,6 +27,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	_ "time/tzdata" // reminders run on each person's clock; do not rely on the host's zone files
 
 	"github.com/aetoneilya/kcal-bot/api/internal/bot"
 	"github.com/aetoneilya/kcal-bot/api/internal/estimate"
@@ -154,6 +155,8 @@ func main() {
 	}
 	if !*devMode {
 		launcher := &bot.Bot{Client: client, AppURL: *origin, Allowed: allowed, Users: st, Owner: owner, Log: log}
+		reminders := &bot.Reminders{Client: client, Store: st, AppURL: *origin, Log: log}
+		go reminders.Run(ctx)
 		go func() {
 			defer close(botDone)
 			_ = launcher.Run(ctx)
