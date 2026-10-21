@@ -93,6 +93,7 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("PUT /api/profile", s.handleSaveProfile)
 	api.HandleFunc("POST /api/analyze", s.handleAnalyze)
 	api.HandleFunc("GET /api/meals", s.handleListMeals)
+	api.HandleFunc("GET /api/meals/regular", s.handleRegularMeals)
 	api.HandleFunc("POST /api/meals", s.handleCreateMeal)
 	api.HandleFunc("PUT /api/meals/{id}", s.handleUpdateMeal)
 	api.HandleFunc("DELETE /api/meals/{id}", s.handleDeleteMeal)
@@ -344,6 +345,16 @@ func supportedImage(mime string) bool {
 }
 
 // handleListMeals takes from/to as unix seconds: the client's local day.
+// handleRegularMeals lists the meals worth offering to repeat.
+func (s *Server) handleRegularMeals(w http.ResponseWriter, r *http.Request) {
+	regulars, err := s.st.RegularMeals(r.Context(), userFrom(r.Context()).ID, time.Now().Add(-historyWindow), 12)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, regulars)
+}
+
 func (s *Server) handleListMeals(w http.ResponseWriter, r *http.Request) {
 	from, errFrom := strconv.ParseInt(r.URL.Query().Get("from"), 10, 64)
 	to, errTo := strconv.ParseInt(r.URL.Query().Get("to"), 10, 64)

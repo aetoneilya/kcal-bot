@@ -71,6 +71,13 @@
     <Capture
       onDraft={(draft, note, photos) => (view = { name: "editor", draft, note, photos })}
       onManual={() => (view = { name: "editor" })}
+      onRepeat={(meal) =>
+        (view = {
+          name: "editor",
+          // A copy, not the original: saving it adds a new meal at today's time.
+          draft: { title: meal.title, items: meal.items, question: "", options: [] },
+          note: meal.note,
+        })}
     />
   {:else if view.name === "profile"}
     <ProfileScreen

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"time"
 
@@ -381,6 +382,59 @@ func (s *Store) Meals(ctx context.Context, userID int64, from, to time.Time) ([]
 	}
 	return s.queryMeals(ctx, `WHERE m.user_id = ? AND m.eaten_at >= ? AND m.eaten_at < ?`,
 		userID, from.Unix(), to.Unix())
+}
+
+// Regular is a meal the person keeps coming back to: its latest instance
+// and how many times a meal with the same foods was saved.
+type Regular struct {
+	Meal  model.Meal `json:"meal"`
+	Times int        `json:"times"`
+}
+
+// RegularMeals returns up to limit of the user's meals since the given time,
+// one per distinct set of foods, most often eaten first and most recent among
+// equals. They are what "eat this again" offers.
+func (s *Store) RegularMeals(ctx context.Context, userID int64, since time.Time, limit int) ([]Regular, error) {
+	meals, err := s.queryMeals(ctx, `WHERE m.user_id = ? AND m.eaten_at >= ?`, userID, since.Unix())
+	if err != nil {
+		return nil, err
+	}
+	byFoods := map[string]*Regular{}
+	var order []string
+	for _, meal := range meals { // oldest first, so the last one seen is the latest
+		key := foodsKey(meal.Items)
+		if r, ok := byFoods[key]; ok {
+			r.Meal, r.Times = meal, r.Times+1
+			continue
+		}
+		byFoods[key] = &Regular{Meal: meal, Times: 1}
+		order = append(order, key)
+	}
+	regulars := make([]Regular, 0, len(order))
+	for _, key := range order {
+		regulars = append(regulars, *byFoods[key])
+	}
+	sort.SliceStable(regulars, func(i, j int) bool {
+		if regulars[i].Times != regulars[j].Times {
+			return regulars[i].Times > regulars[j].Times
+		}
+		return regulars[i].Meal.EatenAt.After(regulars[j].Meal.EatenAt)
+	})
+	if len(regulars) > limit {
+		regulars = regulars[:limit]
+	}
+	return regulars, nil
+}
+
+// foodsKey names a meal by its foods alone, so the same breakfast with a
+// slightly different weight still counts as the same breakfast.
+func foodsKey(items []model.Item) string {
+	names := make([]string, len(items))
+	for i, item := range items {
+		names[i] = strings.ToLower(strings.TrimSpace(item.Name))
+	}
+	sort.Strings(names)
+	return strings.Join(names, "\x00")
 }
 
 // RecentItems returns up to limit items the user saved in meals eaten since

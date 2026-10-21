@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api, type Draft } from "../lib/api";
+  import { api, type Draft, type Meal, type Regular } from "../lib/api";
+  import { kcal, sumTotals } from "../lib/nutrition";
+  import { plural } from "../lib/plural";
   import { downscale } from "../lib/image";
   import { haptic } from "../lib/telegram";
   import Icon from "../components/Icon.svelte";
@@ -9,7 +11,14 @@
   let {
     onDraft,
     onManual,
-  }: { onDraft: (draft: Draft, note: string, photos: Blob[]) => void; onManual: () => void } = $props();
+    onRepeat,
+  }: {
+    onDraft: (draft: Draft, note: string, photos: Blob[]) => void;
+    onManual: () => void;
+    onRepeat: (meal: Meal) => void;
+  } = $props();
+
+  let regulars = $state<Regular[]>([]);
 
   // One meal may carry a few photos: the plate, another angle, the label.
   const MAX_PHOTOS = 3;
@@ -28,6 +37,10 @@
     api
       .me()
       .then((me) => (left = me.analysesLeft))
+      .catch(() => {});
+    api
+      .regularMeals()
+      .then((list) => (regulars = list))
       .catch(() => {});
     return () => photos.forEach((p) => URL.revokeObjectURL(p.url));
   });
@@ -123,6 +136,23 @@
     </label>
     <button class="ghost" onclick={onManual} disabled={busy}><Icon name="pencil" />Вручную</button>
   </div>
+
+  {#if regulars.length && !photos.length}
+    <h2 class="section-title"><span>Ещё раз — без распознавания</span></h2>
+    <ul class="group regulars">
+      {#each regulars.slice(0, 5) as r (r.meal.id)}
+        <li>
+          <button class="regular" onclick={() => onRepeat(r.meal)} disabled={busy}>
+            <span class="body">
+              <span class="name">{r.meal.title || r.meal.items.map((i) => i.name).join(", ")}</span>
+              <span class="sub num">{r.times > 1 ? `${r.times} ${plural(r.times, ["раз", "раза", "раз"])} за 2 месяца` : "недавно"}</span>
+            </span>
+            <span class="kcal num"><b class="round">{kcal(sumTotals(r.meal.items).kcal)}</b> ккал</span>
+          </button>
+        </li>
+      {/each}
+    </ul>
+  {/if}
 
   <label class="field">
     <span class="label">Чего не видно на фото</span>
@@ -343,6 +373,55 @@
   .off {
     opacity: 0.45;
     pointer-events: none;
+  }
+
+  .regulars {
+    margin-bottom: 16px;
+  }
+
+  .regular {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 56px;
+    padding: 8px 16px;
+    text-align: left;
+  }
+
+  .regular:active:not(:disabled) {
+    background: var(--field);
+  }
+
+  .regular .body {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+  }
+
+  .regular .name {
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .regular .sub {
+    font-size: 13px;
+    color: var(--hint);
+  }
+
+  .regular .kcal {
+    flex: none;
+    font-size: 13px;
+    color: var(--hint);
+  }
+
+  .regular .kcal b {
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--text);
   }
 
   .field {

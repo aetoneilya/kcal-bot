@@ -290,3 +290,26 @@ func TestSpendAddsUpPerUserPerDay(t *testing.T) {
 		t.Fatalf("a new day must start at zero, got %v", spent)
 	}
 }
+
+func TestRegularMealsGroupBySameFoods(t *testing.T) {
+	ctx := context.Background()
+	st := openTest(t)
+	at := time.Date(2026, 10, 21, 8, 0, 0, 0, time.UTC)
+	oats := func(day int, grams float64) MealInput {
+		return MealInput{EatenAt: at.AddDate(0, 0, -day), Title: "Овсянка", Items: []model.Item{
+			{Name: "Овсянка", Grams: grams, Kcal100: 88}, {Name: "банан", Grams: 120, Kcal100: 89},
+		}}
+	}
+	for _, m := range []MealInput{oats(3, 240), sampleMeal(at.AddDate(0, 0, -1)), oats(2, 250), oats(0, 260)} {
+		if _, err := st.CreateMeal(ctx, 1, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	regulars, err := st.RegularMeals(ctx, 1, at.AddDate(0, 0, -30), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(regulars) != 2 || regulars[0].Times != 3 || regulars[0].Meal.Items[0].Grams != 260 || regulars[1].Meal.Title != "Гречка с курицей" {
+		t.Fatalf("want oatmeal ×3 (latest 260 g) then buckwheat, got %+v", regulars)
+	}
+}

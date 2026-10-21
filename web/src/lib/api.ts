@@ -43,6 +43,12 @@ export interface MealInput {
   items: Item[];
 }
 
+/** A meal worth repeating: its latest instance and how often it was eaten. */
+export interface Regular {
+  meal: Meal;
+  times: number;
+}
+
 export interface Me {
   id: number;
   firstName: string;
@@ -96,6 +102,8 @@ export const api = {
     }
     return request<Draft>("/api/analyze", { method: "POST", body: form });
   },
+
+  regularMeals: () => request<Regular[]>("/api/meals/regular"),
 
   meals: (from: Date, to: Date) =>
     request<Meal[]>(

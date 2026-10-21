@@ -3,6 +3,7 @@ import type { Item } from "./api";
 import { energyShares, grams, lineTotals, sumTotals } from "./nutrition";
 import { fitWithin } from "./image";
 import { addDays, atTime, dayLabel } from "./day";
+import { plural } from "./plural";
 
 const item = (over: Partial<Item>): Item => ({
   name: "x",
@@ -64,5 +65,14 @@ describe("day", () => {
 
   it("puts a time onto a given day", () => {
     expect(atTime(new Date(2026, 9, 18), "13:45")).toEqual(new Date(2026, 9, 18, 13, 45));
+  });
+});
+
+describe("plural", () => {
+  it("picks the Russian form", () => {
+    const forms: [string, string, string] = ["раз", "раза", "раз"];
+    expect([1, 2, 5, 11, 12, 21, 22, 25].map((n) => plural(n, forms))).toEqual([
+      "раз", "раза", "раз", "раз", "раз", "раз", "раза", "раз",
+    ]);
   });
 });
