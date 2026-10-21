@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,6 +15,7 @@ import (
 	"github.com/aetoneilya/kcal-bot/api/internal/model"
 	"github.com/aetoneilya/kcal-bot/api/internal/store"
 	"github.com/aetoneilya/kcal-bot/api/internal/telegram"
+	"github.com/aetoneilya/kcal-bot/api/internal/treats"
 )
 
 func TestRemindersGoOutOnTheirLocalClockOnce(t *testing.T) {
@@ -90,5 +92,46 @@ func TestRemindersGoOutOnTheirLocalClockOnce(t *testing.T) {
 	r.Tick(ctx, time.Date(2026, 10, 22, 2, 0, 0, 0, msk))
 	if len(sent) != 2 {
 		t.Fatal("a missed summary must not wake anyone at night")
+	}
+}
+
+func TestRemindersCarryAComplimentForChosenPeople(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(filepath.Join(t.TempDir(), "kcal.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	var sent []telegram.SendMessageRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req telegram.SendMessageRequest
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		sent = append(sent, req)
+		_, _ = w.Write([]byte(`{"ok":true,"result":true}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "compliments.txt"), []byte("Ты солнце\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := &Reminders{Client: &telegram.Client{Token: "t", BaseURL: srv.URL}, Store: st, Treats: treats.New(dir, "@Sunny")}
+	for _, user := range []model.User{{ID: 1, Username: "sunny"}, {ID: 2, Username: "other"}} {
+		if _, err := st.EnsureUser(ctx, user); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := st.SaveReminders(ctx, user.ID, model.Reminders{TimeZone: "UTC", SummaryAt: "21:00"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r.Tick(ctx, time.Date(2026, 10, 21, 21, 0, 0, 0, time.UTC))
+	if len(sent) != 2 {
+		t.Fatalf("want two summaries, got %+v", sent)
+	}
+	for _, msg := range sent {
+		has := strings.HasSuffix(msg.Text, "\n\nТы солнце")
+		if has != (msg.ChatID == 1) {
+			t.Errorf("user %d: compliment = %v in %q", msg.ChatID, has, msg.Text)
+		}
 	}
 }

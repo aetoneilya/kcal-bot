@@ -25,6 +25,8 @@
   --protein: #e8606f;
   --fat: #e6a124;
   --carbs: #2fa58a;
+  /* Compliments and cats: the one place the app is allowed to be pink. */
+  --treat: #e2589a;
 
   /* A finished day against the target: short, on target, over. */
   --under: #4f8ff0;
@@ -47,6 +49,7 @@
     --card: var(--tg-theme-section-bg-color, var(--tg-theme-bg-color, #1c1c21));
     --text: var(--tg-theme-text-color, #f3f3f6);
     --warn: #f0a93a;
+    --treat: #f27fb2;
   }
 }
 

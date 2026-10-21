@@ -77,3 +77,7 @@ systemctl restart kcal-bot
 exit 1
 REMOTE
 echo "✓ deployed"
+
+if [ -d "$root/treats" ]; then
+  HOST="$HOST" "$root/scripts/push-treats.sh"
+fi

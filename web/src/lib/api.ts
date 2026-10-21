@@ -1,5 +1,6 @@
 import { initData } from "./telegram";
 import type { Profile } from "./targets";
+import type { Treats } from "./treats";
 
 export type Confidence = "high" | "medium" | "low";
 
@@ -69,6 +70,8 @@ export interface Me {
   analysesLeft: number | null;
   /** Null until the person fills in the form. */
   profile: (Profile & { updatedAt: string }) | null;
+  /** Compliments and cats are on for this person. */
+  treats: boolean;
 }
 
 export class ApiError extends Error {
@@ -95,6 +98,17 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     throw new ApiError(response.status, body?.error ?? `Ошибка ${response.status}`);
   }
   return body as T;
+}
+
+async function blob(path: string): Promise<Blob> {
+  let response: Response;
+  try {
+    response = await fetch(path, { headers: { "X-Telegram-Init-Data": initData() } });
+  } catch {
+    throw new ApiError(0, "Нет связи с сервером");
+  }
+  if (!response.ok) throw new ApiError(response.status, `Ошибка ${response.status}`);
+  return response.blob();
 }
 
 function json(method: string, body: unknown): RequestInit {
@@ -125,6 +139,9 @@ export const api = {
   weights: (from: string, to: string) => request<Weight[]>(`/api/weights?from=${from}&to=${to}`),
   saveWeight: (day: string, weightKg: number) => request<Weight>(`/api/weights/${day}`, json("PUT", { weightKg })),
   deleteWeight: (day: string) => request<void>(`/api/weights/${day}`, { method: "DELETE" }),
+
+  treats: () => request<Treats>("/api/treats"),
+  cat: (name: string) => blob(`/api/treats/cats/${encodeURIComponent(name)}`),
 
   meals: (from: Date, to: Date) =>
     request<Meal[]>(

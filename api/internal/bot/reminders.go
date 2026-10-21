@@ -10,6 +10,7 @@ import (
 	"github.com/aetoneilya/kcal-bot/api/internal/model"
 	"github.com/aetoneilya/kcal-bot/api/internal/store"
 	"github.com/aetoneilya/kcal-bot/api/internal/telegram"
+	"github.com/aetoneilya/kcal-bot/api/internal/treats"
 )
 
 // ReminderStore is the part of the store the reminder loop needs.
@@ -28,6 +29,8 @@ type Reminders struct {
 	Client *telegram.Client
 	Store  ReminderStore
 	AppURL string
+	// Treats adds a compliment to the messages of people who get them.
+	Treats *treats.Treats
 	Log    *slog.Logger
 }
 
@@ -145,6 +148,11 @@ func (r *Reminders) nudge(ctx context.Context, sub store.Subscriber, start time.
 }
 
 func (r *Reminders) send(ctx context.Context, sub store.Subscriber, kind, day, text string) {
+	if r.Treats.For(sub.User) {
+		if compliment := r.Treats.Compliment(); compliment != "" {
+			text += "\n\n" + compliment
+		}
+	}
 	request := telegram.SendMessageRequest{ChatID: sub.User.ID, Text: text}
 	if r.AppURL != "" {
 		request.ReplyMarkup = telegram.OpenAppKeyboard(buttonText, r.AppURL)

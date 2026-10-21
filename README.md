@@ -37,6 +37,7 @@ Both real backends use the same prompt and JSON schema (`api/internal/estimate`)
 - **Календарь** — each finished day against the target its weight called for: short, on target (±10%), over.
 - **Bot messages** — an opt-in evening total and a midday nudge, on the phone's time zone.
 - **Your portions** — the last 60 days of saved items go into the prompt as the person's usual weights.
+- **Treats** — for the people in `TREAT_USERS` only: a compliment of the day in the diary, a dancing cat with a compliment after each new meal and on a «Котик» button, and a compliment in the bot's messages. Compliments and videos sit in `TREATS_DIR` on the server, outside git (`api/internal/treats`); `scripts/push-treats.sh` copies a local `treats/` there.
 
 ## Access and limits
 
@@ -99,3 +100,4 @@ All routes but health need the `X-Telegram-Init-Data` header.
 | `PUT /api/profile` | Save the profile |
 | `GET /api/weights?from=&to=` · `PUT /api/weights/{day}` · `DELETE /api/weights/{day}` | Weigh-ins by local day, `YYYY-MM-DD` |
 | `GET /api/reminders` · `PUT /api/reminders` | Bot message settings |
+| `GET /api/treats` · `GET /api/treats/cats/{name}` | Compliments and cat videos; 404 for anyone without treats |

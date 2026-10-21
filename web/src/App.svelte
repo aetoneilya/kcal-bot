@@ -9,10 +9,12 @@
   import Calendar from "./screens/Calendar.svelte";
   import WeightScreen from "./screens/Weight.svelte";
   import Icon, { type IconName } from "./components/Icon.svelte";
+  import CatOverlay from "./components/CatOverlay.svelte";
   import { api, type Draft, type Meal } from "./lib/api";
   import { startOfDay } from "./lib/day";
   import { targets, type Profile } from "./lib/targets";
   import { haptic, inTelegram, onBack } from "./lib/telegram";
+  import { Cats, complimentOfDay, pick, type Treats } from "./lib/treats";
 
   // Four top-level sections live in the tab bar; adding and editing a meal
   // are tasks pushed over them, with the tab bar hidden and Back to return.
@@ -36,6 +38,22 @@
   let profile = $state<Profile | null | undefined>(undefined);
   const target = $derived(profile ? targets(profile) : null);
 
+  // Compliments and cats, for the people the server says get them.
+  let treats = $state<Treats | null>(null);
+  let cats: Cats | null = null;
+  const todaysCompliment = $derived(treats ? complimentOfDay(treats.compliments, new Date()) : "");
+  let cat = $state<{ video: Promise<string> | null; compliment: string; title: string } | null>(null);
+
+  function showCat(title = "") {
+    if (!treats) return;
+    haptic("soft");
+    cat = {
+      video: cats?.any ? cats.next() : null,
+      compliment: pick(treats.compliments, todaysCompliment) ?? "",
+      title,
+    };
+  }
+
   // A short confirmation after a save or delete, so leaving the editor is
   // not the only sign that it worked.
   let notice = $state("");
@@ -43,6 +61,11 @@
   function close(message?: string) {
     task = null;
     if (!message) return;
+    if (treats && message === "Записано") {
+      // A new meal earns a cat; edits and deletes keep the plain notice.
+      showCat(message);
+      return;
+    }
     notice = message;
     clearTimeout(noticeTimer);
     noticeTimer = setTimeout(() => (notice = ""), 1800);
@@ -57,16 +80,31 @@
   function loadProfile() {
     api
       .me()
-      .then((me) => (profile = me.profile))
+      .then((me) => {
+        profile = me.profile;
+        if (me.treats && !treats) {
+          api.treats().then((t) => {
+            treats = t;
+            cats = new Cats(t.cats, api.cat);
+          }, () => {});
+        }
+      })
       .catch(() => (profile = profile ?? null));
   }
 
   onMount(loadProfile);
 
-  // Telegram's back button leaves a task; top-level tabs have none.
+  // Telegram's back button leaves a task or the cat; top-level tabs have none.
   $effect(() => {
+    if (cat) return onBack(() => (cat = null));
     if (!task) return;
     return onBack(() => close());
+  });
+
+  // The cat after a save should start at once: fetch it while the meal is
+  // being photographed.
+  $effect(() => {
+    if (task?.name === "capture") cats?.prefetch();
   });
 </script>
 
@@ -99,6 +137,7 @@
       bind:day
       {target}
       profileLoaded={profile !== undefined}
+      treat={treats ? { compliment: todaysCompliment, cats: treats.cats.length > 0, onCat: () => showCat() } : null}
       onAdd={() => (task = { name: "capture" })}
       onOpen={(meal) => (task = { name: "editor", meal })}
       onGoal={() => go("profile")}
@@ -126,6 +165,10 @@
     />
   {/if}
 </main>
+
+{#if cat}
+  <CatOverlay video={cat.video} compliment={cat.compliment} title={cat.title} onClose={() => (cat = null)} />
+{/if}
 
 {#if notice}
   <div class="notice" role="status" transition:fade={{ duration: 150 }}><Icon name="check" size={18} />{notice}</div>

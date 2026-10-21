@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -26,6 +27,7 @@ import (
 	"github.com/aetoneilya/kcal-bot/api/internal/foodfacts"
 	"github.com/aetoneilya/kcal-bot/api/internal/model"
 	"github.com/aetoneilya/kcal-bot/api/internal/store"
+	"github.com/aetoneilya/kcal-bot/api/internal/treats"
 )
 
 const testToken = "123456:test-token"
@@ -482,5 +484,46 @@ func TestMealRejectsUnknownFields(t *testing.T) {
 	body := `{"eatenAt":"2026-10-19T12:00:00Z","items":[{"name":"x","grams":1,"kcal100":1}],"userId":8}`
 	if w := do(t, h, 7, "POST", "/api/meals", strings.NewReader(body), "application/json"); w.Code != http.StatusBadRequest {
 		t.Fatalf("a body naming another user must be rejected, got %d", w.Code)
+	}
+}
+
+func TestTreatsAreOnlyForChosenPeople(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "cats"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "compliments.txt"), []byte("Ты чудо\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "cats", "dance.mp4"), []byte("not really a video"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h := newTestServer(t, &stubEstimator{}, Config{Treats: treats.New(dir, "7")})
+
+	var me struct{ Treats bool }
+	_ = json.NewDecoder(do(t, h, 7, "GET", "/api/me", nil, "").Body).Decode(&me)
+	if !me.Treats {
+		t.Fatal("chosen person: me.treats is false")
+	}
+	w := do(t, h, 7, "GET", "/api/treats", nil, "")
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Ты чудо") || !strings.Contains(w.Body.String(), "dance.mp4") {
+		t.Fatalf("treats: %d %s", w.Code, w.Body)
+	}
+	w = do(t, h, 7, "GET", "/api/treats/cats/dance.mp4", nil, "")
+	if w.Code != http.StatusOK || w.Header().Get("Content-Type") != "video/mp4" || w.Body.String() != "not really a video" {
+		t.Fatalf("cat: %d %q", w.Code, w.Header().Get("Content-Type"))
+	}
+	if w := do(t, h, 7, "GET", "/api/treats/cats/..%2Fcompliments.txt", nil, ""); w.Code != http.StatusNotFound {
+		t.Fatalf("path outside cats: %d", w.Code)
+	}
+
+	_ = json.NewDecoder(do(t, h, 8, "GET", "/api/me", nil, "").Body).Decode(&me)
+	if me.Treats {
+		t.Fatal("someone else: me.treats is true")
+	}
+	for _, path := range []string{"/api/treats", "/api/treats/cats/dance.mp4"} {
+		if w := do(t, h, 8, "GET", path, nil, ""); w.Code != http.StatusNotFound {
+			t.Errorf("someone else: %s = %d", path, w.Code)
+		}
 	}
 }

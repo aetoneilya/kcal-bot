@@ -12,3 +12,6 @@ backups/
 
 # Weighed meals are personal photos; only the README is tracked
 evals/*/
+
+# Compliments and cat videos for TREAT_USERS; synced by scripts/push-treats.sh
+/treats/

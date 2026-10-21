@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"mime/multipart"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -22,6 +23,7 @@ import (
 	"github.com/aetoneilya/kcal-bot/api/internal/model"
 	"github.com/aetoneilya/kcal-bot/api/internal/store"
 	"github.com/aetoneilya/kcal-bot/api/internal/tgauth"
+	"github.com/aetoneilya/kcal-bot/api/internal/treats"
 )
 
 type Config struct {
@@ -47,6 +49,9 @@ type Config struct {
 	Products Products
 	// Notifier hears about new people and spent budgets. Nil drops them.
 	Notifier Notifier
+	// Treats are compliments and cat videos for chosen people. Nil gives
+	// them to nobody.
+	Treats *treats.Treats
 	// AllowedOrigin is the single browser origin permitted cross-origin calls
 	// in production. Empty means same-origin only. Ignored in DevMode.
 	AllowedOrigin string
@@ -111,6 +116,8 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("POST /api/meals", s.handleCreateMeal)
 	api.HandleFunc("PUT /api/meals/{id}", s.handleUpdateMeal)
 	api.HandleFunc("DELETE /api/meals/{id}", s.handleDeleteMeal)
+	api.HandleFunc("GET /api/treats", s.handleTreats)
+	api.HandleFunc("GET /api/treats/cats/{name}", s.handleCat)
 
 	root := http.NewServeMux()
 	// Health bypasses authentication and request logging (probes are noise).
@@ -137,11 +144,12 @@ type meResponse struct {
 	Estimator    string         `json:"estimator"`
 	AnalysesLeft *int           `json:"analysesLeft"` // nil when there is no cap
 	Profile      *model.Profile `json:"profile"`      // nil until filled in
+	Treats       bool           `json:"treats"`
 }
 
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	user := userFrom(r.Context())
-	response := meResponse{User: user, Estimator: s.estimator.Name()}
+	response := meResponse{User: user, Estimator: s.estimator.Name(), Treats: s.cfg.Treats.For(user)}
 	if s.cfg.DailyLimit > 0 {
 		used, err := s.st.AnalysesUsed(r.Context(), user.ID)
 		if err != nil {
@@ -160,6 +168,51 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, response)
+}
+
+type treatsResponse struct {
+	Compliments []string `json:"compliments"`
+	Cats        []string `json:"cats"`
+}
+
+// handleTreats lists what there is; to anyone without treats it is a 404,
+// the same as a route that does not exist.
+func (s *Server) handleTreats(w http.ResponseWriter, r *http.Request) {
+	if !s.cfg.Treats.For(userFrom(r.Context())) {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	compliments, err := s.cfg.Treats.Compliments()
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	cats, err := s.cfg.Treats.Cats()
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, treatsResponse{Compliments: append([]string{}, compliments...), Cats: append([]string{}, cats...)})
+}
+
+func (s *Server) handleCat(w http.ResponseWriter, r *http.Request) {
+	if !s.cfg.Treats.For(userFrom(r.Context())) {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	path, mediaType, err := s.cfg.Treats.Cat(r.PathValue("name"))
+	if errors.Is(err, os.ErrNotExist) {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	// Revalidated each time (cheap 304), so a replaced video shows up.
+	w.Header().Set("Content-Type", mediaType)
+	w.Header().Set("Cache-Control", "private, no-cache")
+	http.ServeFile(w, r, path)
 }
 
 // profileRequest is what the form sends; UpdatedAt is the server's to set.

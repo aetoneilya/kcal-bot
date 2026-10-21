@@ -37,6 +37,7 @@ import (
 	"github.com/aetoneilya/kcal-bot/api/internal/server"
 	"github.com/aetoneilya/kcal-bot/api/internal/store"
 	"github.com/aetoneilya/kcal-bot/api/internal/telegram"
+	"github.com/aetoneilya/kcal-bot/api/internal/treats"
 )
 
 func main() {
@@ -141,6 +142,9 @@ func main() {
 		}
 	}
 
+	// Compliments and cat videos for the people named in TREAT_USERS.
+	gifts := treats.New(os.Getenv("TREATS_DIR"), os.Getenv("TREAT_USERS"))
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -172,7 +176,7 @@ func main() {
 	}
 	if !*devMode {
 		launcher := &bot.Bot{Client: client, AppURL: *origin, Allowed: allowed, Users: st, Owner: owner, Log: log}
-		reminders := &bot.Reminders{Client: client, Store: st, AppURL: *origin, Log: log}
+		reminders := &bot.Reminders{Client: client, Store: st, AppURL: *origin, Treats: gifts, Log: log}
 		go reminders.Run(ctx)
 		go func() {
 			defer close(botDone)
@@ -193,6 +197,7 @@ func main() {
 			DailySpendLimit:      spendLimit,
 			TotalDailySpendLimit: totalSpendLimit,
 			Notifier:             notifier,
+			Treats:               gifts,
 			Products:             &foodfacts.Client{UserAgent: "KalorieKitten/1.0 (+" + *origin + ")"},
 			AllowedOrigin:        *origin,
 			StaticDir:            *staticDir,

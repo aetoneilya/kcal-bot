@@ -14,10 +14,13 @@
     onAdd,
     onOpen,
     onGoal,
+    treat = null,
   }: {
     day: Date;
     target: Targets | null;
     profileLoaded: boolean;
+    /** Compliment of the day and a cat button, for the people who get them. */
+    treat?: { compliment: string; cats: boolean; onCat: () => void } | null;
     onAdd: () => void;
     onOpen: (meal: Meal) => void;
     onGoal: () => void;
@@ -106,6 +109,15 @@
       <Icon name="chevron-right" size={24} />
     </button>
   </header>
+
+  {#if treat && isToday && (treat.compliment || treat.cats)}
+    <section class="treat" aria-label="Комплимент дня">
+      {#if treat.compliment}<p class="round">{treat.compliment}</p>{/if}
+      {#if treat.cats}
+        <button class="cat" onclick={treat.onCat}><Kitten size={26} />Котик</button>
+      {/if}
+    </section>
+  {/if}
 
   <section class="card summary" aria-label="Итог дня">
     <div class="top">
@@ -208,6 +220,43 @@
 </div>
 
 <style>
+  .treat {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+    padding: 12px 12px 12px 16px;
+    border-radius: var(--r);
+    background: color-mix(in srgb, var(--treat) 14%, var(--card));
+  }
+
+  .treat p {
+    flex: 1;
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+
+  .treat .cat {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 44px;
+    margin-left: auto;
+    padding: 0 14px 0 10px;
+    border-radius: 22px;
+    background: var(--treat);
+    color: #fff;
+    font-weight: 600;
+    transition: transform 0.12s var(--ease-out);
+  }
+
+  .treat .cat:active {
+    transform: scale(0.96);
+  }
+
   .screen {
     display: flex;
     flex-direction: column;
