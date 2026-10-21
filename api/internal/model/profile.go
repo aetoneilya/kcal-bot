@@ -118,3 +118,32 @@ func (p Profile) Normalize() Profile {
 	p.PaceKgWeek = math.Round(p.PaceKgWeek*100) / 100
 	return p
 }
+
+// Water is how much a person drank on one local day.
+type Water struct {
+	Day string `json:"day"` // YYYY-MM-DD
+	Ml  int    `json:"ml"`
+}
+
+// MaxWaterMl is more than anyone drinks in a day; it only stops typos.
+const MaxWaterMl = 10000
+
+func ValidateWater(w Water) error {
+	if _, err := time.Parse(time.DateOnly, w.Day); err != nil {
+		return invalid("day must be YYYY-MM-DD")
+	}
+	if w.Ml < 0 || w.Ml > MaxWaterMl {
+		return invalid("water must be 0–%d ml", MaxWaterMl)
+	}
+	return nil
+}
+
+// WaterGoalMl is a day's water: 30 ml per kg of body weight, kept within
+// 1.5–3 l and rounded to a glass; 2 l without a weight.
+func WaterGoalMl(weightKg float64) int {
+	if weightKg <= 0 {
+		return 2000
+	}
+	ml := math.Min(math.Max(weightKg*30, 1500), 3000)
+	return int(math.Round(ml/250) * 250)
+}

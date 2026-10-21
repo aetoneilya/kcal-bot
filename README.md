@@ -34,6 +34,7 @@ Both real backends use the same prompt and JSON schema (`api/internal/estimate`)
 - **Barcode** — a photo of the barcode is decoded in the browser and looked up in Open Food Facts; no model call.
 - **Ещё раз** — meals eaten in the last 60 days, grouped by their foods, most frequent first; a tap copies one.
 - **Норма** — sex, birth year, height, weight, goal weight, activity and pace give a daily target (Mifflin–St Jeor with guard rails: a deficit of at most a quarter, a floor of 1200/1500 kcal). The formula lives in `web/src/lib/targets.ts` and, for the bot, in `api/internal/model/targets.go`; their tests pin the same numbers.
+- **Вода** — a glass (250 ml) at a time toward a day's goal of 30 ml per kg, within 1.5–3 l; the weekly summary carries the average.
 - **Вес** — one weigh-in a day with a chart; the newest becomes the profile's weight, so the target follows the scale.
 - **Календарь** — each finished day against the target its weight called for: short, on target (±10%), over.
 - **Bot messages** — opt-in, on the phone's time zone: a Sunday summary of the week (days logged, average against the target, weight trend) closed by a few warm lines and one healthy habit to try, written by Claude (`api/internal/coach`, `kcal-bot -coach` prints a sample) or a fixed tip without a key; and a midday nudge when nothing is logged.
@@ -104,5 +105,6 @@ All routes but health need the `X-Telegram-Init-Data` header.
 | `GET /api/meals/{id}/photo` | The meal's preview, ~20 KB JPEG |
 | `PUT /api/profile` | Save the profile |
 | `GET /api/weights?from=&to=` · `PUT /api/weights/{day}` · `DELETE /api/weights/{day}` | Weigh-ins by local day, `YYYY-MM-DD` |
+| `GET /api/water/{day}` · `PUT /api/water/{day}` | A day's water total in ml, with the goal |
 | `GET /api/reminders` · `PUT /api/reminders` | Bot message settings |
 | `GET /api/treats` · `GET /api/treats/cats/{name}` | Compliments and cat videos; 404 for anyone without treats |

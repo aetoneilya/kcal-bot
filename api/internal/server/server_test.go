@@ -575,3 +575,42 @@ func TestMealPhotoIsSavedOnceAndOnlyForItsOwner(t *testing.T) {
 		t.Fatalf("no photo: %d", w.Code)
 	}
 }
+
+func TestWaterIsADayTotalWithAGoalFromWeight(t *testing.T) {
+	h := newTestServer(t, &stubEstimator{}, Config{})
+	var got struct {
+		Day    string
+		Ml     int
+		GoalMl int
+	}
+	_ = json.NewDecoder(do(t, h, 7, "GET", "/api/water/2026-10-21", nil, "").Body).Decode(&got)
+	if got.Ml != 0 || got.GoalMl != 2000 {
+		t.Fatalf("empty day without a profile: %+v", got)
+	}
+	profile := map[string]any{"sex": "female", "birthYear": 1998, "heightCm": 165, "weightKg": 60,
+		"goalWeightKg": 58, "activity": "moderate", "paceKgWeek": 0.25}
+	if w := do(t, h, 7, "PUT", "/api/profile", jsonBody(t, profile), "application/json"); w.Code != http.StatusOK {
+		t.Fatalf("profile: %d %s", w.Code, w.Body)
+	}
+	w := do(t, h, 7, "PUT", "/api/water/2026-10-21", jsonBody(t, map[string]int{"ml": 750}), "application/json")
+	_ = json.NewDecoder(w.Body).Decode(&got)
+	if w.Code != http.StatusOK || got.Ml != 750 || got.GoalMl != 1750 {
+		t.Fatalf("save: %d %+v", w.Code, got)
+	}
+	_ = json.NewDecoder(do(t, h, 7, "GET", "/api/water/2026-10-21", nil, "").Body).Decode(&got)
+	if got.Ml != 750 {
+		t.Fatalf("read back: %+v", got)
+	}
+	_ = json.NewDecoder(do(t, h, 8, "GET", "/api/water/2026-10-21", nil, "").Body).Decode(&got)
+	if got.Ml != 0 {
+		t.Fatal("someone else sees the water")
+	}
+	for _, bad := range []string{`{"ml": -250}`, `{"ml": 20000}`} {
+		if w := do(t, h, 7, "PUT", "/api/water/2026-10-21", strings.NewReader(bad), "application/json"); w.Code != http.StatusBadRequest {
+			t.Errorf("%s: %d", bad, w.Code)
+		}
+	}
+	if w := do(t, h, 7, "GET", "/api/water/yesterday", nil, ""); w.Code != http.StatusBadRequest {
+		t.Errorf("bad day: %d", w.Code)
+	}
+}

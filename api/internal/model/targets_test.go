@@ -28,3 +28,14 @@ func TestDailyTargetMatchesTheMiniApp(t *testing.T) {
 		}
 	}
 }
+
+func TestWaterGoal(t *testing.T) {
+	for _, c := range []struct {
+		kg   float64
+		want int
+	}{{0, 2000}, {40, 1500}, {60, 1750}, {80, 2500}, {130, 3000}} {
+		if got := WaterGoalMl(c.kg); got != c.want {
+			t.Errorf("WaterGoalMl(%v) = %d, want %d", c.kg, got, c.want)
+		}
+	}
+}

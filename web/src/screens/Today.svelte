@@ -7,6 +7,7 @@
   import Icon from "../components/Icon.svelte";
   import Kitten from "../components/Kitten.svelte";
   import MealThumb from "../components/MealThumb.svelte";
+  import WaterCard from "../components/WaterCard.svelte";
 
   let {
     day = $bindable(),
@@ -163,6 +164,8 @@
       </button>
     {/if}
   </section>
+
+  <WaterCard {day} />
 
   <h2 class="section-title">
     <span>Приёмы пищи</span>

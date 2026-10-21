@@ -246,6 +246,40 @@ func (s *Store) SaveWeight(ctx context.Context, userID int64, w model.Weight) (m
 }
 
 // DeleteWeight removes a weigh-in; the profile falls back to the newest left.
+// SaveWater sets a day's water total.
+func (s *Store) SaveWater(ctx context.Context, userID int64, w model.Water) (model.Water, error) {
+	if err := model.ValidateWater(w); err != nil {
+		return model.Water{}, err
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		INSERT INTO water (user_id, day, ml, updated_at) VALUES (?, ?, ?, ?)
+		ON CONFLICT (user_id, day) DO UPDATE SET ml = excluded.ml, updated_at = excluded.updated_at`,
+		userID, w.Day, w.Ml, s.now().Unix()); err != nil {
+		return model.Water{}, fmt.Errorf("save water: %w", err)
+	}
+	return w, nil
+}
+
+// Water returns the days in [from, to] with any water, oldest first.
+func (s *Store) Water(ctx context.Context, userID int64, from, to string) ([]model.Water, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT day, ml FROM water WHERE user_id = ? AND day >= ? AND day <= ? AND ml > 0 ORDER BY day`,
+		userID, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("query water: %w", err)
+	}
+	defer rows.Close()
+	var days []model.Water
+	for rows.Next() {
+		var w model.Water
+		if err := rows.Scan(&w.Day, &w.Ml); err != nil {
+			return nil, err
+		}
+		days = append(days, w)
+	}
+	return days, rows.Err()
+}
+
 func (s *Store) DeleteWeight(ctx context.Context, userID int64, day string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

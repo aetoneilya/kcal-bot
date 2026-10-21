@@ -123,6 +123,8 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("GET /api/weights", s.handleListWeights)
 	api.HandleFunc("PUT /api/weights/{day}", s.handleSaveWeight)
 	api.HandleFunc("DELETE /api/weights/{day}", s.handleDeleteWeight)
+	api.HandleFunc("GET /api/water/{day}", s.handleGetWater)
+	api.HandleFunc("PUT /api/water/{day}", s.handleSaveWater)
 	api.HandleFunc("POST /api/analyze", s.handleAnalyze)
 	api.HandleFunc("GET /api/meals", s.handleListMeals)
 	api.HandleFunc("GET /api/meals/regular", s.handleRegularMeals)
@@ -281,6 +283,59 @@ func (s *Server) handleListWeights(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, weights)
+}
+
+type waterResponse struct {
+	model.Water
+	GoalMl int `json:"goalMl"`
+}
+
+// handleGetWater returns a day's water and the goal from the profile's
+// current weight.
+func (s *Server) handleGetWater(w http.ResponseWriter, r *http.Request) {
+	user := userFrom(r.Context())
+	day := r.PathValue("day")
+	if err := model.ValidateWater(model.Water{Day: day}); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	days, err := s.st.Water(r.Context(), user.ID, day, day)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	response := waterResponse{Water: model.Water{Day: day}, GoalMl: s.waterGoal(r.Context(), user.ID)}
+	if len(days) == 1 {
+		response.Ml = days[0].Ml
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (s *Server) handleSaveWater(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Ml int `json:"ml"`
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxJSON))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "request body is not a valid amount of water")
+		return
+	}
+	user := userFrom(r.Context())
+	saved, err := s.st.SaveWater(r.Context(), user.ID, model.Water{Day: r.PathValue("day"), Ml: body.Ml})
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, waterResponse{Water: saved, GoalMl: s.waterGoal(r.Context(), user.ID)})
+}
+
+func (s *Server) waterGoal(ctx context.Context, userID int64) int {
+	profile, err := s.st.Profile(ctx, userID)
+	if err != nil {
+		return model.WaterGoalMl(0)
+	}
+	return model.WaterGoalMl(profile.WeightKg)
 }
 
 func (s *Server) handleSaveWeight(w http.ResponseWriter, r *http.Request) {

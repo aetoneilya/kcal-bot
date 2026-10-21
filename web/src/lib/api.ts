@@ -60,6 +60,13 @@ export interface Weight {
   weightKg: number;
 }
 
+/** Water drunk on a local day and the day's goal from the current weight. */
+export interface Water {
+  day: string; // YYYY-MM-DD
+  ml: number;
+  goalMl: number;
+}
+
 /** Bot messages a person opted into, on their own clock. */
 export interface Reminders {
   timeZone: string;
@@ -136,6 +143,9 @@ export const api = {
 
   regularMeals: () => request<Regular[]>("/api/meals/regular"),
   barcode: (code: string) => request<Draft>(`/api/barcode/${code}`),
+
+  water: (day: string) => request<Water>(`/api/water/${day}`),
+  saveWater: (day: string, ml: number) => request<Water>(`/api/water/${day}`, json("PUT", { ml })),
 
   reminders: () => request<Reminders>("/api/reminders"),
   saveReminders: (r: Reminders) => request<Reminders>("/api/reminders", json("PUT", r)),

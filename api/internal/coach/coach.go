@@ -28,6 +28,8 @@ type Week struct {
 	// Weight is the newest weigh-in and Change its difference from a week
 	// before; nil when there are none.
 	Weight, Change *float64
+	// WaterMl is the average over days with any water logged; 0 when none.
+	WaterMl float64
 	// Number picks the fallback tip, so it changes week to week.
 	Number int
 }
@@ -110,6 +112,9 @@ func describe(w Week) string {
 		fmt.Fprintf(&b, "Daily target: %.0f kcal; days within 10%% of it: %d\n", w.Target, w.OnTarget)
 	} else {
 		b.WriteString("No target set yet\n")
+	}
+	if w.WaterMl > 0 {
+		fmt.Fprintf(&b, "Water on days it was logged: %.0f ml on average\n", w.WaterMl)
 	}
 	if w.Weight != nil {
 		fmt.Fprintf(&b, "Weight: %.1f kg", *w.Weight)

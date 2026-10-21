@@ -25,6 +25,8 @@
   --protein: #e8606f;
   --fat: #e6a124;
   --carbs: #2fa58a;
+  /* Water: its own blue, apart from the accent and the macro hues. */
+  --water: #2a9fd8;
   /* Compliments and cats: the one place the app is allowed to be pink. */
   --treat: #e2589a;
 
@@ -50,6 +52,7 @@
     --text: var(--tg-theme-text-color, #f3f3f6);
     --warn: #f0a93a;
     --treat: #f27fb2;
+    --water: #4cb6ea;
   }
 }
 

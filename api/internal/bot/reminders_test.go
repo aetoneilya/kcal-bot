@@ -208,8 +208,15 @@ func TestWeeklySummaryAsksTheCoachAndCountsItsCost(t *testing.T) {
 		}
 	}
 
+	for _, w := range []model.Water{{Day: "2026-10-23", Ml: 1500}, {Day: "2026-10-24", Ml: 2000}} {
+		if _, err := st.SaveWater(ctx, 1, w); err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	r.Tick(ctx, time.Date(2026, 10, 25, 20, 5, 0, 0, time.UTC))
-	if len(sent) != 1 || !strings.HasSuffix(sent[0].Text, "\n\nТы молодец!") || !strings.Contains(sent[0].Text, "Вес 59,9 кг, −0,5 за неделю") {
+	if len(sent) != 1 || !strings.HasSuffix(sent[0].Text, "\n\nТы молодец!") || !strings.Contains(sent[0].Text, "Вес 59,9 кг, −0,5 за неделю") ||
+		!strings.Contains(sent[0].Text, "Вода — 1,8 л в день") {
 		t.Fatalf("got %+v", sent)
 	}
 	w := c.got[0]

@@ -23,6 +23,7 @@ type ReminderStore interface {
 	Meals(ctx context.Context, userID int64, from, to time.Time) ([]model.Meal, error)
 	Profile(ctx context.Context, userID int64) (model.Profile, error)
 	Weights(ctx context.Context, userID int64, from, to string) ([]model.Weight, error)
+	Water(ctx context.Context, userID int64, from, to string) ([]model.Water, error)
 	MarkSent(ctx context.Context, userID int64, kind, day string) error
 	StopReminders(ctx context.Context, userID int64) error
 	AddSpend(ctx context.Context, userID int64, usd float64) (float64, error)
@@ -166,6 +167,12 @@ func (r *Reminders) summary(ctx context.Context, sub store.Subscriber, start tim
 		}
 	}
 
+	if water, err := r.Store.Water(ctx, sub.User.ID, from.Format(time.DateOnly), day); err == nil && len(water) > 0 {
+		for _, w := range water {
+			week.WaterMl += float64(w.Ml) / float64(len(water))
+		}
+	}
+
 	text := "Итог недели 🐱\n\n" + weekNumbers(week) + "\n\n" + r.motivate(ctx, sub.User, week)
 	r.send(ctx, sub, "summary", day, text)
 }
@@ -177,6 +184,9 @@ func weekNumbers(w coach.Week) string {
 		avg += fmt.Sprintf(" при норме %s, в норме %s", thousands(w.Target), plural(w.OnTarget, "день", "дня", "дней"))
 	}
 	lines = append(lines, avg, fmt.Sprintf("Белок — %.0f г в день", w.Protein))
+	if w.WaterMl > 0 {
+		lines = append(lines, fmt.Sprintf("Вода — %s л в день", kg(w.WaterMl/1000)))
+	}
 	if w.Weight != nil {
 		weight := fmt.Sprintf("Вес %s кг", kg(*w.Weight))
 		if w.Change != nil {
