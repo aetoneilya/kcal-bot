@@ -73,6 +73,8 @@ To try it inside Telegram before a VPS exists, run the API with `BOT_TOKEN` and 
 
 The live bot runs as a systemd service on a VPS: `scripts/deploy.sh` runs the checks, builds the binary and the Mini App, backs up the database, swaps both (keeping `*.old`) and rolls back if `/api/health` does not answer after the restart.
 
+`scripts/install-watch.sh` puts an outside health check (`deploy/watch`) on another host: every two minutes it asks `/api/health` through the public domain and has the bot tell the owner when two checks in a row fail, and again when it is back.
+
 Two tools run the configured model on the host that has its key, without Telegram:
 
 - `kcal-bot -probe photo.jpg [-note …]` — one photo; prints the raw answer, tokens and cost.

@@ -1,0 +1,8 @@
+[Unit]
+Description=Check that KalorieKitten answers, tell the owner if not
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/kcal-watch.sh
