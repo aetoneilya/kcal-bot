@@ -191,6 +191,7 @@ func main() {
 		TotalDailySpendLimit: totalSpendLimit,
 		Notifier:             notifier,
 		Treats:               gifts,
+		Owner:                ownerID,
 		Products:             &foodfacts.Client{UserAgent: "KalorieKitten/1.0 (+" + *origin + ")"},
 		AllowedOrigin:        *origin,
 		StaticDir:            *staticDir,

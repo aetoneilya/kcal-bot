@@ -10,6 +10,8 @@
   import Calendar from "./screens/Calendar.svelte";
   import Icon, { type IconName } from "./components/Icon.svelte";
   import CatOverlay from "./components/CatOverlay.svelte";
+  import LookLab from "./components/LookLab.svelte";
+  import { apply as applyLook, load as loadLook } from "./lib/look";
   import { api, type Draft, type Meal } from "./lib/api";
   import { startOfDay } from "./lib/day";
   import { targets, type Profile } from "./lib/targets";
@@ -38,6 +40,11 @@
   // Undefined while loading, null when the person has not filled it in.
   let profile = $state<Profile | null | undefined>(undefined);
   const target = $derived(profile ? targets(profile) : null);
+
+  // The owner's look lab; a saved look applies on every start.
+  let lab = $state(false);
+  let labOpen = $state(false);
+  applyLook(loadLook());
 
   // Compliments and cats, for the people the server says get them.
   let treats = $state<Treats | null>(null);
@@ -107,6 +114,7 @@
       .me()
       .then((me) => {
         profile = me.profile;
+        lab = me.lab;
         if (me.treats && !treats) {
           api.treats().then((t) => {
             treats = t;
@@ -145,6 +153,7 @@
       onAdd={(origin) => open({ name: "capture" }, origin)}
       onOpen={(meal, origin) => open({ name: "editor", meal }, origin)}
       onGoal={() => go("profile")}
+      onLab={lab ? () => (labOpen = true) : undefined}
     />
   {:else if tab === "calendar"}
     <Calendar
@@ -198,6 +207,10 @@
     </div>
     {/key}
   </Sheet>
+{/if}
+
+{#if labOpen}
+  <LookLab onClose={() => (labOpen = false)} />
 {/if}
 
 {#if cat}

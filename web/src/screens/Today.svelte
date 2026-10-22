@@ -3,6 +3,7 @@
   import { add, energyShares, grams, kcal, sumTotals, type Totals } from "../lib/nutrition";
   import { addDays, dayKey, dayLabel, fullDate, startOfDay, timeLabel } from "../lib/day";
   import { arrive, lastShown, page, remember } from "../lib/motion";
+  import { setDay } from "../lib/look";
   import { haptic } from "../lib/telegram";
   import type { Targets } from "../lib/targets";
   import Icon from "../components/Icon.svelte";
@@ -21,6 +22,7 @@
     onGoal,
     treat = null,
     changes = 0,
+    onLab,
   }: {
     day: Date;
     target: Targets | null;
@@ -32,6 +34,8 @@
     onOpen: (meal: Meal, origin: Element) => void;
     /** Bumped when a meal was saved or deleted elsewhere: reload. */
     changes?: number;
+    /** The owner's look lab, opened by holding the title. */
+    onLab?: () => void;
     onGoal: () => void;
   } = $props();
 
@@ -127,6 +131,23 @@
     if (Math.abs(dx) > 64 && Math.abs(dy) < 40) shift(dx < 0 ? 1 : -1);
   }
 
+  // The background that follows the day reads this.
+  $effect(() => {
+    if (loading) return;
+    setDay({ meals: meals.length, kcal: totals.kcal, target: target?.kcal ?? null });
+  });
+
+  // Holding the title opens the owner's look lab.
+  let hold: ReturnType<typeof setTimeout> | undefined;
+  function pressTitle() {
+    if (!onLab) return;
+    hold = setTimeout(() => {
+      haptic("medium");
+      onLab?.();
+    }, 550);
+  }
+  const releaseTitle = () => clearTimeout(hold);
+
   function mealName(meal: Meal): string {
     return meal.title || meal.items.map((i) => i.name).join(", ") || "Без названия";
   }
@@ -140,7 +161,17 @@
       <Icon name="chevron-left" size={24} />
     </button>
     <div class="heading">
-      <h1 class="round">{title}</h1>
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+      <h1
+        class="round"
+        onpointerdown={pressTitle}
+        onpointerup={releaseTitle}
+        onpointerleave={releaseTitle}
+        onpointercancel={releaseTitle}
+        oncontextmenu={(e) => onLab && e.preventDefault()}
+      >
+        {title}
+      </h1>
       {#if subtitle}<p class="hint">{subtitle}</p>{/if}
     </div>
     <button class="nav" onclick={() => shift(1)} disabled={isToday} aria-label="Следующий день">
@@ -324,6 +355,10 @@
   }
 
   h1 {
+    /* Held for the lab: no text selection or callout on a long press. */
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
     font-size: 22px;
     font-weight: 700;
     letter-spacing: -0.01em;

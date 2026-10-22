@@ -45,10 +45,18 @@
   --glass-edge: rgb(255 255 255 / 0.65);
   --glass-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 10px 30px -14px rgb(0 0 0 / 0.16);
   --blur: blur(20px) saturate(160%);
+  /* The light behind the glass, tinted by --mood: the accent by default,
+     or how the day goes, or the hour, when the lab picks those. Drawn at
+     1.6× and dimmed by --glow-opacity, so the lab can turn it up. */
+  --mood: var(--accent);
+  --mood-2: var(--carbs);
+  --bloom: transparent;
+  --sheen: rgb(255 255 255 / 0.35);
   --glow:
-    radial-gradient(110% 55% at 100% -8%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 62%),
-    radial-gradient(80% 45% at -12% 38%, color-mix(in srgb, var(--carbs) 13%, transparent), transparent 64%),
-    linear-gradient(118deg, transparent 38%, rgb(255 255 255 / 0.22) 47%, transparent 58%);
+    radial-gradient(110% 55% at 100% -8%, color-mix(in srgb, var(--mood) 29%, transparent), transparent 62%),
+    radial-gradient(80% 45% at -12% 38%, color-mix(in srgb, var(--mood-2) 21%, transparent), transparent 64%),
+    linear-gradient(118deg, transparent 38%, var(--sheen) 47%, transparent 58%),
+    radial-gradient(90% 45% at 80% 108%, var(--bloom), transparent 70%);
 
   --r: 16px;
   --r-control: 12px;
@@ -71,10 +79,7 @@
     --glass-strong: color-mix(in srgb, var(--card) 80%, transparent);
     --glass-edge: rgb(255 255 255 / 0.08);
     --glass-shadow: 0 10px 30px -14px rgb(0 0 0 / 0.5);
-    --glow:
-      radial-gradient(110% 55% at 100% -8%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 62%),
-      radial-gradient(80% 45% at -12% 38%, color-mix(in srgb, var(--carbs) 14%, transparent), transparent 64%),
-      linear-gradient(118deg, transparent 38%, rgb(255 255 255 / 0.04) 47%, transparent 58%);
+    --sheen: rgb(255 255 255 / 0.065);
     --treat: #f27fb2;
     --water: #4cb6ea;
   }
@@ -89,10 +94,7 @@
   --glass-strong: color-mix(in srgb, var(--card) 80%, transparent);
   --glass-edge: rgb(255 255 255 / 0.08);
   --glass-shadow: 0 10px 30px -14px rgb(0 0 0 / 0.5);
-  --glow:
-    radial-gradient(110% 55% at 100% -8%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 62%),
-    radial-gradient(80% 45% at -12% 38%, color-mix(in srgb, var(--carbs) 14%, transparent), transparent 64%),
-    linear-gradient(118deg, transparent 38%, rgb(255 255 255 / 0.04) 47%, transparent 58%);
+  --sheen: rgb(255 255 255 / 0.065);
   --treat: #f27fb2;
   --water: #4cb6ea;
 }
@@ -127,7 +129,81 @@ body::before {
   inset: 0;
   z-index: -1;
   background: var(--glow);
+  opacity: var(--glow-opacity, 0.62);
   pointer-events: none;
+}
+
+/* Grain over the light, under the content: a repeated tile of noise,
+   blended so mid-grey disappears. The tile is drawn by lib/look.ts. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image: var(--grain-image, none);
+  background-size: 160px 160px;
+  opacity: var(--grain-opacity, 0.06);
+  mix-blend-mode: var(--grain-blend, soft-light);
+  pointer-events: none;
+}
+
+/* "data" follows the day on screen (lib/look.ts paintDay): the colours and
+   --day-glow change with it, and ease over a second instead of jumping. */
+@property --mood {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #2f7cf6;
+}
+
+@property --mood-2 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #2fa58a;
+}
+
+/* A third light, from below, only on a day that closed its target. */
+@property --bloom {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+
+:root {
+  transition:
+    --mood 1.2s ease,
+    --mood-2 1.2s ease,
+    --bloom 1.6s ease;
+}
+
+:root[data-bg="data"] body::before {
+  opacity: calc(var(--glow-opacity, 0.62) * var(--day-glow, 1));
+  transition: opacity 1.2s ease;
+}
+
+:root[data-bg="beam"] {
+  --glow:
+    radial-gradient(70% 38% at 50% -6%, color-mix(in srgb, var(--mood) 34%, transparent), transparent 72%),
+    linear-gradient(112deg, transparent 30%, var(--sheen) 43%, transparent 54%),
+    linear-gradient(112deg, transparent 56%, color-mix(in srgb, var(--sheen) 45%, transparent) 62%, transparent 70%);
+}
+
+/* The aurora drifts: the layer is bigger than the screen and wanders. */
+:root[data-bg="aurora"] body::before {
+  inset: -25%;
+  background:
+    radial-gradient(40% 30% at 30% 30%, color-mix(in srgb, var(--mood) 34%, transparent), transparent 70%),
+    radial-gradient(35% 28% at 70% 45%, color-mix(in srgb, var(--carbs) 28%, transparent), transparent 70%),
+    radial-gradient(30% 25% at 45% 75%, color-mix(in srgb, var(--protein) 18%, transparent), transparent 70%);
+  animation: drift 48s ease-in-out infinite alternate;
+}
+
+@keyframes drift {
+  from {
+    transform: translate(-6%, 4%) rotate(-6deg);
+  }
+  to {
+    transform: translate(6%, -5%) rotate(8deg) scale(1.08);
+  }
 }
 
 /* Frosted glass: the shared surface of cards, lists, bars. */

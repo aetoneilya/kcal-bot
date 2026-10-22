@@ -635,3 +635,14 @@ func TestLargePhotoFallsBackToThePreview(t *testing.T) {
 		t.Fatalf("fallback: %d %q", w.Code, w.Body)
 	}
 }
+
+func TestOnlyTheOwnerGetsTheLab(t *testing.T) {
+	h := newTestServer(t, &stubEstimator{}, Config{Owner: 7})
+	for id, want := range map[int64]bool{7: true, 8: false} {
+		var me struct{ Lab bool }
+		_ = json.NewDecoder(do(t, h, id, "GET", "/api/me", nil, "").Body).Decode(&me)
+		if me.Lab != want {
+			t.Errorf("user %d: lab = %v, want %v", id, me.Lab, want)
+		}
+	}
+}

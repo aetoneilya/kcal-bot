@@ -69,7 +69,9 @@
     min-width: 0;
     padding: 10px 10px 11px;
     border-radius: 14px;
-    background: color-mix(in srgb, var(--tint) 9%, var(--field));
+    /* The macro's own colour, lightly, over the card — not over the grey
+       field, which turned it muddy. */
+    background: color-mix(in srgb, var(--tint) 11%, var(--card));
     --tint: var(--hint);
   }
 
@@ -86,13 +88,15 @@
     --tint: var(--accent);
   }
 
+  /* Labels in a deep shade of the macro's colour: grey on a tint read
+     as dirty. */
   dt {
     display: flex;
     align-items: center;
     gap: 6px;
-    color: var(--hint);
+    color: color-mix(in srgb, var(--tint) 62%, var(--text));
     font-size: 12px;
-    font-weight: 500;
+    font-weight: 600;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -122,7 +126,8 @@
   }
 
   dd span {
-    color: var(--hint);
+    color: color-mix(in srgb, var(--tint) 35%, var(--text));
+    opacity: 0.7;
     font-size: 12px;
   }
 

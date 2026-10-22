@@ -53,6 +53,9 @@ type Config struct {
 	// Treats are compliments and cat videos for chosen people. Nil gives
 	// them to nobody.
 	Treats *treats.Treats
+	// Owner is the admin's Telegram id; the app shows them its design lab.
+	// 0 shows it to nobody (and to everyone in DevMode).
+	Owner int64
 	// AllowedOrigin is the single browser origin permitted cross-origin calls
 	// in production. Empty means same-origin only. Ignored in DevMode.
 	AllowedOrigin string
@@ -162,11 +165,13 @@ type meResponse struct {
 	AnalysesLeft *int           `json:"analysesLeft"` // nil when there is no cap
 	Profile      *model.Profile `json:"profile"`      // nil until filled in
 	Treats       bool           `json:"treats"`
+	Lab          bool           `json:"lab"` // the owner's look-and-feel playground
 }
 
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	user := userFrom(r.Context())
-	response := meResponse{User: user, Estimator: s.estimator.Name(), Treats: s.cfg.Treats.For(user)}
+	response := meResponse{User: user, Estimator: s.estimator.Name(), Treats: s.cfg.Treats.For(user),
+		Lab: s.cfg.DevMode || (s.cfg.Owner != 0 && user.ID == s.cfg.Owner)}
 	if s.cfg.DailyLimit > 0 {
 		used, err := s.st.AnalysesUsed(r.Context(), user.ID)
 		if err != nil {

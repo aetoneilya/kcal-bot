@@ -85,6 +85,8 @@ export interface Me {
   profile: (Profile & { updatedAt: string }) | null;
   /** Compliments and cats are on for this person. */
   treats: boolean;
+  /** The owner: the look-and-feel lab opens on a long press of the title. */
+  lab: boolean;
 }
 
 export class ApiError extends Error {
