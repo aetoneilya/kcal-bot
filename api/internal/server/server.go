@@ -108,7 +108,7 @@ func (s *Server) Analyzer() *analysis.Analyzer {
 // Uploads are downscaled in the browser to ~200 KB; the cap only stops abuse.
 const (
 	maxUpload = 8 << 20
-	maxJSON   = 1 << 20
+	maxJSON   = 1 << 20 // a meal with its two photos in base64 is ~0.6 MB at most
 )
 
 // Meals worth repeating are looked for this far back.
@@ -562,7 +562,8 @@ type mealRequest struct {
 	Title   string       `json:"title"`
 	Note    string       `json:"note"`
 	Items   []model.Item `json:"items"`
-	Photo   []byte       `json:"photo"` // base64 preview; optional
+	Photo   []byte       `json:"photo"`      // base64 preview; optional
+	Large   []byte       `json:"photoLarge"` // base64, the same photo bigger; optional
 }
 
 func (s *Server) decodeMeal(w http.ResponseWriter, r *http.Request) (store.MealInput, bool) {
@@ -573,7 +574,7 @@ func (s *Server) decodeMeal(w http.ResponseWriter, r *http.Request) (store.MealI
 		writeError(w, http.StatusBadRequest, "request body is not a valid meal")
 		return store.MealInput{}, false
 	}
-	return store.MealInput{EatenAt: body.EatenAt, Title: body.Title, Note: body.Note, Items: body.Items, Photo: body.Photo}, true
+	return store.MealInput{EatenAt: body.EatenAt, Title: body.Title, Note: body.Note, Items: body.Items, Photo: body.Photo, PhotoLarge: body.Large}, true
 }
 
 func (s *Server) handleCreateMeal(w http.ResponseWriter, r *http.Request) {
@@ -594,7 +595,7 @@ func (s *Server) handleMealPhoto(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	photo, err := s.st.MealPhoto(r.Context(), userFrom(r.Context()).ID, id)
+	photo, err := s.st.MealPhoto(r.Context(), userFrom(r.Context()).ID, id, r.URL.Query().Get("size") == "large")
 	if err != nil {
 		s.fail(w, r, err)
 		return

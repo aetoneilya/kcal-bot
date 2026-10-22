@@ -466,10 +466,17 @@ type MealInput struct {
 	// Photo is an optional preview, set when the meal is created; an update
 	// keeps the one there is, so a cached preview never goes stale.
 	Photo []byte
+	// PhotoLarge is the same photo bigger, for the meal's own screen; same
+	// rules as Photo.
+	PhotoLarge []byte
 }
 
 // MaxPhoto caps a meal's preview; a 320 px JPEG is about 20 KB.
-const MaxPhoto = 64 << 10
+// MaxPhotoLarge caps the big one; 1080 px is about 100 KB.
+const (
+	MaxPhoto      = 64 << 10
+	MaxPhotoLarge = 400 << 10
+)
 
 func (in MealInput) validate() error {
 	if in.EatenAt.IsZero() {
@@ -481,11 +488,17 @@ func (in MealInput) validate() error {
 	if err := model.ValidateText("note", in.Note, model.MaxNoteRunes); err != nil {
 		return err
 	}
-	if in.Photo != nil {
-		if len(in.Photo) > MaxPhoto {
-			return fmt.Errorf("%w: photo is larger than %d KB", ErrInvalid, MaxPhoto>>10)
+	for _, photo := range []struct {
+		data []byte
+		max  int
+	}{{in.Photo, MaxPhoto}, {in.PhotoLarge, MaxPhotoLarge}} {
+		if photo.data == nil {
+			continue
 		}
-		switch http.DetectContentType(in.Photo) {
+		if len(photo.data) > photo.max {
+			return fmt.Errorf("%w: photo is larger than %d KB", ErrInvalid, photo.max>>10)
+		}
+		switch http.DetectContentType(photo.data) {
 		case "image/jpeg", "image/webp", "image/png":
 		default:
 			return fmt.Errorf("%w: photo must be JPEG, WebP or PNG", ErrInvalid)
@@ -506,8 +519,9 @@ func (s *Store) CreateMeal(ctx context.Context, userID int64, in MealInput) (mod
 
 	now := s.now().Unix()
 	result, err := tx.ExecContext(ctx, `
-		INSERT INTO meals (user_id, eaten_at, title, note, photo, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		userID, in.EatenAt.Unix(), strings.TrimSpace(in.Title), strings.TrimSpace(in.Note), in.Photo, now, now)
+		INSERT INTO meals (user_id, eaten_at, title, note, photo, photo_large, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		userID, in.EatenAt.Unix(), strings.TrimSpace(in.Title), strings.TrimSpace(in.Note), in.Photo, in.PhotoLarge, now, now)
 	if err != nil {
 		return model.Meal{}, fmt.Errorf("insert meal: %w", err)
 	}
@@ -568,10 +582,16 @@ func (s *Store) DeleteMeal(ctx context.Context, userID, id int64) error {
 	return nil
 }
 
-// MealPhoto returns a meal's preview, or ErrNotFound when it has none.
-func (s *Store) MealPhoto(ctx context.Context, userID, id int64) ([]byte, error) {
+// MealPhoto returns a meal's preview, or ErrNotFound when it has none. With
+// large it returns the big copy, falling back to the preview for meals saved
+// before there was one.
+func (s *Store) MealPhoto(ctx context.Context, userID, id int64, large bool) ([]byte, error) {
+	column := "photo"
+	if large {
+		column = "COALESCE(photo_large, photo)"
+	}
 	var photo []byte
-	err := s.db.QueryRowContext(ctx, `SELECT photo FROM meals WHERE id = ? AND user_id = ?`, id, userID).Scan(&photo)
+	err := s.db.QueryRowContext(ctx, `SELECT `+column+` FROM meals WHERE id = ? AND user_id = ?`, id, userID).Scan(&photo)
 	if errors.Is(err, sql.ErrNoRows) || (err == nil && photo == nil) {
 		return nil, ErrNotFound
 	}

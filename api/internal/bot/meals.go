@@ -286,7 +286,8 @@ func (b *Bot) handleMealPress(ctx context.Context, press *telegram.CallbackQuery
 	switch action {
 	case "save":
 		_, err := b.Meals.CreateMeal(ctx, meal.user.ID, store.MealInput{
-			EatenAt: meal.eatenAt, Title: meal.draft.Title, Note: meal.note, Items: meal.draft.Items, Photo: meal.thumb,
+			EatenAt: meal.eatenAt, Title: meal.draft.Title, Note: meal.note, Items: meal.draft.Items,
+			Photo: meal.thumb, PhotoLarge: meal.large(),
 		})
 		if err != nil {
 			b.log().Warn("could not save a meal from the bot", "user", meal.user.ID, "err", err)
@@ -346,6 +347,15 @@ func (b *Bot) reestimate(ctx context.Context, id string, meal *pendingMeal, repl
 	meal.draft = draft
 	b.drafts.mu.Unlock()
 	b.edit(ctx, meal.chatID, meal.message, describeDraft(draft, true), draftKeyboard(id, draft))
+}
+
+// large is the photo the model saw, kept as the meal's big photo when it is
+// a reasonable size; Telegram's sizes are JPEG already.
+func (p *pendingMeal) large() []byte {
+	if len(p.photos) == 0 || p.thumb == nil || len(p.photos[0].Data) > store.MaxPhotoLarge {
+		return nil
+	}
+	return p.photos[0].Data
 }
 
 func (b *Bot) release(meal *pendingMeal) {

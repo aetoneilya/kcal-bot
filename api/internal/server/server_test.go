@@ -537,6 +537,8 @@ func TestMealPhotoIsSavedOnceAndOnlyForItsOwner(t *testing.T) {
 		"items":   []model.Item{{Name: "суп", Grams: 300, Kcal100: 40, Confidence: model.ConfidenceMedium}},
 		"photo":   jpeg, // encoding/json sends []byte as base64, as the app does
 	}
+	large := []byte("\xff\xd8\xff\xe0 the same, bigger")
+	meal["photoLarge"] = large
 	w := do(t, h, 7, "POST", "/api/meals", jsonBody(t, meal), "application/json")
 	var created model.Meal
 	if err := json.NewDecoder(w.Body).Decode(&created); err != nil || w.Code != http.StatusCreated || !created.HasPhoto {
@@ -550,6 +552,10 @@ func TestMealPhotoIsSavedOnceAndOnlyForItsOwner(t *testing.T) {
 	if w := do(t, h, 8, "GET", path, nil, ""); w.Code != http.StatusNotFound {
 		t.Fatalf("someone else's photo: %d", w.Code)
 	}
+	if w := do(t, h, 7, "GET", path+"?size=large", nil, ""); w.Body.String() != string(large) {
+		t.Fatalf("large photo: %d %q", w.Code, w.Body)
+	}
+	delete(meal, "photoLarge")
 
 	// An edit without a photo keeps it.
 	delete(meal, "photo")
@@ -612,5 +618,20 @@ func TestWaterIsADayTotalWithAGoalFromWeight(t *testing.T) {
 	}
 	if w := do(t, h, 7, "GET", "/api/water/yesterday", nil, ""); w.Code != http.StatusBadRequest {
 		t.Errorf("bad day: %d", w.Code)
+	}
+}
+
+func TestLargePhotoFallsBackToThePreview(t *testing.T) {
+	h := newTestServer(t, &stubEstimator{}, Config{})
+	jpeg := []byte("\xff\xd8\xff\xe0 only a preview")
+	meal := map[string]any{
+		"eatenAt": time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC),
+		"items":   []model.Item{{Name: "суп", Grams: 300, Kcal100: 40, Confidence: model.ConfidenceMedium}},
+		"photo":   jpeg,
+	}
+	var created model.Meal
+	_ = json.NewDecoder(do(t, h, 7, "POST", "/api/meals", jsonBody(t, meal), "application/json").Body).Decode(&created)
+	if w := do(t, h, 7, "GET", fmt.Sprintf("/api/meals/%d/photo?size=large", created.ID), nil, ""); w.Body.String() != string(jpeg) {
+		t.Fatalf("fallback: %d %q", w.Code, w.Body)
 	}
 }
