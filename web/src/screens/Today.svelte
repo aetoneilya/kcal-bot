@@ -1,13 +1,16 @@
 <script lang="ts">
   import { api, type Meal } from "../lib/api";
   import { add, energyShares, grams, kcal, sumTotals, type Totals } from "../lib/nutrition";
-  import { addDays, dayLabel, fullDate, startOfDay, timeLabel } from "../lib/day";
+  import { addDays, dayKey, dayLabel, fullDate, startOfDay, timeLabel } from "../lib/day";
+  import { arrive, lastShown, page, remember } from "../lib/motion";
   import { haptic } from "../lib/telegram";
   import type { Targets } from "../lib/targets";
   import Icon from "../components/Icon.svelte";
   import Kitten from "../components/Kitten.svelte";
   import MealThumb from "../components/MealThumb.svelte";
   import WaterCard from "../components/WaterCard.svelte";
+  import CountUp from "../components/CountUp.svelte";
+  import MacroTiles from "../components/MacroTiles.svelte";
 
   let {
     day = $bindable(),
@@ -17,14 +20,18 @@
     onOpen,
     onGoal,
     treat = null,
+    changes = 0,
   }: {
     day: Date;
     target: Targets | null;
     profileLoaded: boolean;
     /** Compliment of the day and a cat button, for the people who get them. */
     treat?: { compliment: string; cats: boolean; onCat: () => void } | null;
-    onAdd: () => void;
-    onOpen: (meal: Meal) => void;
+    // The element is where the opened screen grows from.
+    onAdd: (origin: Element) => void;
+    onOpen: (meal: Meal, origin: Element) => void;
+    /** Bumped when a meal was saved or deleted elsewhere: reload. */
+    changes?: number;
     onGoal: () => void;
   } = $props();
 
@@ -55,13 +62,25 @@
   $effect(() => {
     const from = day;
     void attempt;
+    void changes;
     let stale = false;
     loading = true;
     error = "";
     api
       .meals(from, addDays(from, 1))
       .then((list) => {
-        if (!stale) meals = list;
+        if (stale) return;
+        // Meals that were not there the last time this day was on screen
+        // are the ones just saved; they get to arrive.
+        const key = dayKey(from);
+        const before = lastShown<Set<number>>(`${key}:ids`);
+        fresh = new Set(before ? list.filter((m) => !before.has(m.id)).map((m) => m.id) : []);
+        remember(`${key}:ids`, new Set(list.map((m) => m.id)));
+        barFrom = lastShown<number[]>(`${key}:bar`) ?? null;
+        grown = false;
+        meals = list;
+        loadedKey = key;
+        requestAnimationFrame(() => requestAnimationFrame(() => (grown = true)));
       })
       .catch((e) => {
         if (!stale) error = e.message;
@@ -75,8 +94,25 @@
   function shift(days: number) {
     if (days > 0 && isToday) return;
     haptic();
+    dir = days;
     day = addDays(day, days);
   }
+
+  // The day whose meals are on screen; its content slides in from the side
+  // it was paged to once they have loaded, and counts up from what was shown
+  // there before.
+  let loadedKey = $state("");
+  let dir = $state(0);
+  let fresh = $state(new Set<number>());
+  let barFrom = $state<number[] | null>(null);
+  let grown = $state(false);
+  const widths = $derived(macros.map((m) => ((m.share * totals.kcal) / scale) * 100));
+  $effect(() => {
+    if (!loadedKey || loading) return;
+    remember(`${loadedKey}:kcal`, totals.kcal);
+    remember(`${loadedKey}:left`, Math.abs(left));
+    remember(`${loadedKey}:bar`, widths);
+  });
 
   // A horizontal swipe moves between days, as in any diary app.
   let touchX = 0;
@@ -121,41 +157,43 @@
     </section>
   {/if}
 
+  {#key loadedKey}
+  <div class="day" in:page={{ dir }}>
   <section class="card summary" aria-label="Итог дня">
     <div class="top">
       <div class="lead">
         {#if loading && meals.length === 0}
           <span class="skeleton" style="width: 128px; height: 40px"></span>
         {:else}
-          <span class="value round num" class:over>{kcal(totals.kcal)}</span>
+          <span class="value round num" class:over><CountUp value={totals.kcal} from={lastShown(`${loadedKey}:kcal`)} format={kcal} /></span>
           <span class="unit num">{target ? `из ${kcal(target.kcal)} ккал` : "ккал"}</span>
         {/if}
       </div>
       {#if target}
         <button class="goal num" class:over onclick={onGoal} aria-label="Моя норма">
-          <span class="round">{kcal(Math.abs(left))}</span>
+          <span class="round">
+            {#if loading && meals.length === 0}…{:else}<CountUp value={Math.abs(left)} from={lastShown(`${loadedKey}:left`)} format={kcal} />{/if}
+          </span>
           <span>{over ? "сверх нормы" : "осталось"}</span>
         </button>
       {/if}
     </div>
 
     <div class="bar" aria-hidden="true">
-      {#each macros as m (m.key)}
-        <span class="seg {m.key}" style="width: {((m.share * totals.kcal) / scale) * 100}%"></span>
+      {#each macros as m, i (m.key)}
+        <span class="seg {m.key}" style="width: {grown || !barFrom ? widths[i] : (barFrom[i] ?? 0)}%"></span>
       {/each}
       {#if over && target}
         <span class="tick" style="left: {(target.kcal / scale) * 100}%"></span>
       {/if}
     </div>
 
-    <dl class="macros">
-      {#each macros as m (m.key)}
-        <div>
-          <dt><i class="dot {m.key}"></i>{m.label}</dt>
-          <dd class="round num">{grams(m.value)}<span>{m.goal ? ` / ${m.goal}` : ""}&nbsp;г</span></dd>
-        </div>
-      {/each}
-    </dl>
+    <MacroTiles
+      protein={totals.protein}
+      fat={totals.fat}
+      carbs={totals.carbs}
+      goals={target ? { protein: target.protein, fat: target.fat, carbs: target.carbs } : null}
+    />
 
     {#if profileLoaded && !target}
       <button class="invite" onclick={onGoal}>
@@ -179,44 +217,51 @@
       <button class="ghost" onclick={() => attempt++}>Повторить</button>
     </div>
   {:else if loading && meals.length === 0}
-    <ul class="group">
+    <ul class="meals">
       {#each [0, 1] as i (i)}
-        <li class="row">
-          <span class="skeleton" style="width: 44px; height: 44px; border-radius: 10px"></span>
+        <li class="meal glass">
+          <span class="skeleton" style="width: 56px; height: 56px; border-radius: 50%"></span>
           <span class="body">
+            <span class="skeleton" style="width: 30%; height: 12px"></span>
             <span class="skeleton" style="width: 60%; height: 16px"></span>
-            <span class="skeleton" style="width: 40%; height: 13px"></span>
+            <span class="skeleton" style="width: 45%; height: 13px"></span>
           </span>
-          <span class="skeleton" style="width: 36px; height: 16px"></span>
         </li>
       {/each}
     </ul>
   {:else if meals.length === 0}
     <div class="card empty">
-      <span class="mark"><Kitten size={64} /></span>
+      <span class="mark"><Kitten size={64} blink /></span>
       <p class="round">{isToday ? "Сегодня пока пусто" : "В этот день ничего не записано"}</p>
       <p class="hint">Сфотографируй тарелку — разберу её на продукты и посчитаю калории.</p>
     </div>
   {:else}
-    <ul class="group">
+    <ul class="meals">
       {#each meals as meal (meal.id)}
         {@const t = sumTotals(meal.items)}
-        <li>
-          <button class="row" onclick={() => onOpen(meal)}>
-            <MealThumb id={meal.id} hasPhoto={meal.hasPhoto} />
+        <li class:fresh={fresh.has(meal.id)} in:arrive|global={{ fresh: fresh.has(meal.id) }}>
+          <button class="meal glass" data-meal={meal.id} onclick={(e) => onOpen(meal, e.currentTarget)}>
+            <MealThumb id={meal.id} hasPhoto={meal.hasPhoto} size={56} round />
             <span class="body">
+              <span class="energy num"><b>{kcal(t.kcal)}</b> ккал · {timeLabel(new Date(meal.eatenAt))}</span>
               <span class="name">{mealName(meal)}</span>
-              <span class="sub num">{timeLabel(new Date(meal.eatenAt))} · Б {grams(t.protein)} · Ж {grams(t.fat)} · У {grams(t.carbs)}</span>
+              <span class="mac num" aria-label={`Белки ${grams(t.protein)} г, жиры ${grams(t.fat)} г, углеводы ${grams(t.carbs)} г`}>
+                <span class="m-protein"><Icon name="drumstick" size={14} />{grams(t.protein)} г</span>
+                <span class="m-fat"><Icon name="drop" size={14} />{grams(t.fat)} г</span>
+                <span class="m-carbs"><Icon name="wheat" size={14} />{grams(t.carbs)} г</span>
+              </span>
             </span>
-            <span class="kcal num"><b class="round">{kcal(t.kcal)}</b> ккал</span>
+            <span class="go"><Icon name="chevron-right" size={18} /></span>
           </button>
         </li>
       {/each}
     </ul>
   {/if}
+  </div>
+  {/key}
 
   <div class="dock">
-    <button class="primary" onclick={onAdd}>
+    <button class="primary" onclick={(e) => onAdd(e.currentTarget)}>
       <Icon name="camera" size={22} />
       Добавить приём пищи
     </button>
@@ -307,6 +352,22 @@
   .nav:disabled {
     color: var(--hint);
     opacity: 0.35;
+  }
+
+  .day {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* A meal just saved glows once, so the eye finds where it went. */
+  .fresh .meal {
+    animation: glow 1.4s 0.2s ease-out;
+  }
+
+  @keyframes glow {
+    from {
+      background: color-mix(in srgb, var(--accent) 14%, transparent);
+    }
   }
 
   .summary {
@@ -414,89 +475,93 @@
     background: var(--carbs);
   }
 
-  .macros {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
+  .summary :global(.tiles) {
+    margin-top: 2px;
+  }
+
+  .meals {
+    list-style: none;
     margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 8px;
   }
 
-  .macros > div + div {
-    border-left: 1px solid var(--line);
-    padding-left: 12px;
-  }
-
-  dt {
+  /* One frosted card per meal: the plate, then what and how much. */
+  .meal {
     display: flex;
     align-items: center;
-    gap: 6px;
-    font-size: 13px;
-    color: var(--hint);
-  }
-
-  .dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex: none;
-  }
-
-  dd {
-    margin: 2px 0 0;
-    font-size: 20px;
-    font-weight: 600;
-  }
-
-  dd span {
-    font-size: 14px;
-    font-weight: 400;
-    color: var(--hint);
-  }
-
-  .row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
+    gap: 14px;
     width: 100%;
-    min-height: 64px;
-    padding: 10px 16px;
+    min-height: 80px;
+    padding: 12px 10px 12px 12px;
+    border-radius: 20px;
     text-align: left;
+    transition: transform 0.15s var(--ease-out);
   }
 
-  button.row:active {
-    background: var(--field);
+  button.meal:active {
+    transform: scale(0.98);
   }
 
   .body {
     flex: 1;
     min-width: 0;
     display: grid;
-    gap: 4px;
+    gap: 3px;
+  }
+
+  .energy {
+    font-size: 12px;
+    color: var(--hint);
+    white-space: nowrap;
+  }
+
+  .energy b {
+    color: var(--text);
+    font-weight: 600;
   }
 
   .name {
-    font-weight: 500;
+    font-size: 16px;
+    font-weight: 600;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .sub {
+  .mac {
+    display: flex;
+    gap: 12px;
+    margin-top: 2px;
     font-size: 13px;
     color: var(--hint);
     white-space: nowrap;
   }
 
-  .kcal {
-    flex: none;
-    text-align: right;
-    font-size: 13px;
-    color: var(--hint);
+  .mac > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
   }
 
-  .kcal b {
-    font-size: 17px;
-    font-weight: 600;
-    color: var(--text);
+  .mac :global(svg) {
+    color: var(--tint);
+  }
+
+  .m-protein {
+    --tint: var(--protein);
+  }
+  .m-fat {
+    --tint: var(--fat);
+  }
+  .m-carbs {
+    --tint: var(--carbs);
+  }
+
+  .go {
+    flex: none;
+    color: var(--line-strong);
   }
 
   .empty,

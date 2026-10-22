@@ -25,17 +25,22 @@ export async function downscale(file: Blob): Promise<Blob> {
 
 /** The diary's preview of a meal: small enough (~20 KB) to keep for every meal. */
 export const THUMB_SIDE = 320;
+/** The meal's own screen shows it big: 1080 px is sharp on a phone, ~100 KB. */
+export const LARGE_SIDE = 1080;
 
-export async function thumbnail(file: Blob): Promise<Blob> {
+export const thumbnail = (file: Blob) => resize(file, THUMB_SIDE, 0.72);
+export const largePhoto = (file: Blob) => resize(file, LARGE_SIDE, 0.8);
+
+async function resize(file: Blob, side: number, quality: number): Promise<Blob> {
   const bitmap = await createImageBitmap(file);
-  const size = fitWithin(bitmap.width, bitmap.height, THUMB_SIDE);
+  const size = fitWithin(bitmap.width, bitmap.height, side);
   const canvas = document.createElement("canvas");
   canvas.width = size.width;
   canvas.height = size.height;
   canvas.getContext("2d")!.drawImage(bitmap, 0, 0, size.width, size.height);
   bitmap.close();
   return new Promise((resolve, reject) =>
-    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("toBlob failed"))), "image/jpeg", 0.72),
+    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("toBlob failed"))), "image/jpeg", quality),
   );
 }
 

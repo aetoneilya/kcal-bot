@@ -94,8 +94,10 @@
         <text class="goal-label" x={W - pad.right} y={y(goal!) - 5} text-anchor="end">цель {fmtKg(goal!)}</text>
       {/if}
 
-      <path class="line" d={path} />
-      <circle class="dot" cx={x(last.t)} cy={y(last.v)} r="4" />
+      {#key path}
+        <path class="line draw" d={path} pathLength="1" />
+        <circle class="dot last" cx={x(last.t)} cy={y(last.v)} r="4" />
+      {/key}
 
       {#if hover !== null}
         {@const p = points[hover]}
@@ -155,6 +157,34 @@
     stroke-width: 2;
     stroke-linejoin: round;
     stroke-linecap: round;
+  }
+
+  /* The trend draws left to right, then today's point lands on it. */
+  .draw {
+    stroke-dasharray: 1;
+    animation: draw 0.7s var(--ease-out) both;
+  }
+
+  @keyframes draw {
+    from {
+      stroke-dashoffset: 1;
+    }
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  .last {
+    animation: land 0.3s 0.55s var(--ease-out) both;
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+
+  @keyframes land {
+    from {
+      opacity: 0;
+      transform: scale(0.4);
+    }
   }
 
   .dot {

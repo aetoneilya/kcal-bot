@@ -1,7 +1,7 @@
 <script lang="ts">
   // The KalorieKitten mark: a line-drawn cat head. `peek` turns the eyes
   // sideways for the "looking at your plate" moment.
-  let { size = 56, peek = false }: { size?: number; peek?: boolean } = $props();
+  let { size = 56, peek = false, blink = false }: { size?: number; peek?: boolean; blink?: boolean } = $props();
 </script>
 
 <svg
@@ -15,6 +15,7 @@
   stroke-linejoin="round"
   aria-hidden="true"
   class:peek
+  class:blink
 >
   <path d="M14 27 12.5 10.5 25 18.5c2.2-.6 4.5-.9 7-.9s4.8.3 7 .9l12.5-8L50 27c2.6 3.4 4 7.2 4 11.2C54 48.6 44.2 55 32 55S10 48.6 10 38.2c0-4 1.4-7.8 4-11.2Z" />
   <g class="eyes">
@@ -32,6 +33,24 @@
 
   .eyes {
     transition: transform 0.5s var(--ease-out);
+  }
+
+  /* Now and then, like a cat that is awake and waiting. */
+  .blink .eyes {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: blink 5s 1.5s infinite;
+  }
+
+  @keyframes blink {
+    0%,
+    94%,
+    100% {
+      transform: scaleY(1);
+    }
+    97% {
+      transform: scaleY(0.1);
+    }
   }
 
   .peek .eyes {

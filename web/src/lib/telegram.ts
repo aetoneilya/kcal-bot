@@ -10,6 +10,8 @@ type HapticStyle = "light" | "medium" | "heavy" | "rigid" | "soft";
 
 interface TelegramWebApp {
   initData: string;
+  colorScheme?: "light" | "dark";
+  onEvent?(event: "themeChanged", cb: () => void): void;
   ready(): void;
   expand(): void;
   showConfirm?(message: string, callback: (ok: boolean) => void): void;
@@ -35,6 +37,13 @@ export const inTelegram = Boolean(tg?.initData);
 export function ready(): void {
   tg?.ready();
   tg?.expand();
+  // Telegram's own theme may differ from the phone's; the CSS follows
+  // data-theme when Telegram says, and the system setting otherwise.
+  const apply = () => {
+    if (tg?.colorScheme) document.documentElement.dataset.theme = tg.colorScheme;
+  };
+  apply();
+  tg?.onEvent?.("themeChanged", apply);
 }
 
 /**

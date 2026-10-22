@@ -20,7 +20,12 @@
 
   // The meal's photo as a small rounded tile; a quiet placeholder for meals
   // typed in by hand, so the rows stay aligned.
-  let { id, hasPhoto, size = 44 }: { id: number; hasPhoto: boolean; size?: number } = $props();
+  let {
+    id,
+    hasPhoto,
+    size = 44,
+    round = false,
+  }: { id: number; hasPhoto: boolean; size?: number; round?: boolean } = $props();
 
   let src = $state("");
   $effect(() => {
@@ -37,7 +42,7 @@
   });
 </script>
 
-<span class="thumb" style="--size: {size}px" aria-hidden="true">
+<span class="thumb" class:round style="--size: {size}px" aria-hidden="true">
   {#if src}
     <img {src} alt="" />
   {:else if !hasPhoto}
@@ -56,6 +61,14 @@
     overflow: hidden;
     background: var(--field);
     color: var(--hint);
+  }
+
+  /* A plate: round, with a thin rim of light. */
+  .round {
+    border-radius: 50%;
+    box-shadow:
+      0 0 0 2px var(--glass-strong),
+      0 4px 12px -4px rgb(0 0 0 / 0.25);
   }
 
   img {

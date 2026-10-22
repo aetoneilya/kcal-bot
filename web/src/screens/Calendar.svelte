@@ -1,3 +1,11 @@
+<script lang="ts" module>
+  import type { Weight as CachedWeight } from "../lib/api";
+
+  // Months already loaded this session, so opening the tab again shows them
+  // at once and refreshes quietly, instead of blinking through placeholders.
+  const loaded = new Map<number, { totals: Map<number, number>; weights: CachedWeight[] }>();
+</script>
+
 <script lang="ts">
   import { api } from "../lib/api";
   import { sameDay, startOfDay } from "../lib/day";
@@ -9,6 +17,7 @@
   import { haptic } from "../lib/telegram";
   import { untrack } from "svelte";
   import Icon from "../components/Icon.svelte";
+  import { page } from "../lib/motion";
 
   let {
     initial,
@@ -24,7 +33,6 @@
     onGoal: () => void;
   } = $props();
 
-  let weights = $state<Weight[]>([]);
 
   // A past day is judged against the target its weight called for then: the
   // newest weigh-in on or before it, or the profile's weight without one.
@@ -42,8 +50,12 @@
 
   // Opens on the month of the day being viewed, then navigates on its own.
   let month = $state(startOfMonth(untrack(() => initial)));
-  let totals = $state<Map<number, number>>(new Map());
-  let loading = $state(true);
+  const seen = untrack(() => loaded.get(month.getTime()));
+  let totals = $state<Map<number, number>>(seen?.totals ?? new Map());
+  let weights = $state<Weight[]>(seen?.weights ?? []);
+  let loading = $state(!seen);
+  // Placeholders only for a month never shown before.
+  let fresh = $state(!seen);
   let error = $state("");
   let attempt = $state(0);
 
@@ -61,6 +73,12 @@
     const from = month;
     void attempt;
     let stale = false;
+    const cached = untrack(() => loaded.get(from.getTime()));
+    if (cached) {
+      totals = cached.totals;
+      weights = cached.weights;
+    }
+    fresh = !cached;
     loading = true;
     error = "";
     api
@@ -77,7 +95,9 @@
       })
       .then(() => (profile ? api.weights(dayKey(addDays(from, -120)), dayKey(addMonths(from, 1))) : []))
       .then((list) => {
-        if (!stale) weights = list;
+        if (stale) return;
+        weights = list;
+        loaded.set(from.getTime(), { totals, weights: list });
       })
       .catch((e) => {
         if (!stale) error = e.message;
@@ -88,8 +108,10 @@
     return () => (stale = true);
   });
 
+  let dir = $state(0);
   function shift(months: number) {
     haptic();
+    dir = months;
     month = addMonths(month, months);
   }
 
@@ -149,6 +171,8 @@
         <button class="ghost" onclick={() => attempt++}>Повторить</button>
       </div>
     {:else}
+      {#key month}
+      <div class="weeks" in:page={{ dir }}>
       {#each weeks as week, w (w)}
         <div class="row">
           {#each week as date, d (d)}
@@ -164,7 +188,7 @@
               >
                 <span class="n num">{date.getDate()}</span>
                 <span class="d num">
-                  {#if loading && !totals.size}
+                  {#if loading && fresh}
                     <i class="skeleton"></i>
                   {:else if s.delta !== null}
                     {short(s.delta)}
@@ -179,6 +203,8 @@
           {/each}
         </div>
       {/each}
+      </div>
+      {/key}
     {/if}
   </section>
 

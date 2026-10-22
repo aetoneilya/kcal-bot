@@ -3,6 +3,7 @@
   import { dayKey } from "../lib/day";
   import { haptic } from "../lib/telegram";
   import Icon from "./Icon.svelte";
+  import CountUp from "./CountUp.svelte";
 
   // Water for the day on screen: a glass at a time toward the day's goal.
   // Taps update at once and the newest total is sent; a failed save puts
@@ -14,6 +15,8 @@
   let goal = $state(2000);
   let loaded = $state(false);
   let failed = $state(false);
+  // Bumped per glass, so the ripple on the button restarts each time.
+  let drops = $state(0);
 
   $effect(() => {
     const key = dayKey(day);
@@ -38,6 +41,7 @@
     const next = Math.max(0, ml + delta);
     if (next === ml) return;
     haptic();
+    if (delta > 0) drops++;
     ml = next;
     failed = false;
     const key = dayKey(day);
@@ -57,7 +61,7 @@
 <section class="card water" aria-label="Вода">
   <div class="text">
     <p class="amount num">
-      <b class="round">{loaded ? litres(ml) : "—"}</b>
+      <b class="round">{#if loaded}<CountUp value={ml} format={litres} />{:else}—{/if}</b>
       <span>из {litres(goal)} л воды</span>
     </p>
     <div class="bar" aria-hidden="true"><span style="width: {share * 100}%"></span></div>
@@ -68,6 +72,9 @@
   </button>
   <button class="plus" onclick={() => change(GLASS)} disabled={!loaded} aria-label="Добавить стакан воды">
     <Icon name="plus" size={18} />250 мл
+    {#key drops}
+      {#if drops}<span class="ripple" aria-hidden="true"></span>{/if}
+    {/key}
   </button>
 </section>
 
@@ -149,8 +156,34 @@
   }
 
   .plus {
+    position: relative;
+    overflow: hidden;
     padding: 0 14px 0 10px;
     background: color-mix(in srgb, var(--water) 16%, var(--card));
     color: var(--water);
+  }
+  /* A drop landing: a ring spreading from the button's middle. */
+  .ripple {
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--water);
+    opacity: 0;
+    pointer-events: none;
+    animation: ripple 0.55s var(--ease-out);
+  }
+
+  @keyframes ripple {
+    from {
+      opacity: 0.35;
+      transform: scale(0.3);
+    }
+    to {
+      opacity: 0;
+      transform: scale(5);
+    }
   }
 </style>

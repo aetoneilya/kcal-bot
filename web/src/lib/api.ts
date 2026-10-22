@@ -46,6 +46,8 @@ export interface MealInput {
   items: Item[];
   /** Base64 JPEG preview, on create only; an update keeps the saved one. */
   photo?: string;
+  /** The same photo bigger, for the meal's own screen; same rules. */
+  photoLarge?: string;
 }
 
 /** A meal worth repeating: its latest instance and how often it was eaten. */
@@ -165,5 +167,5 @@ export const api = {
   createMeal: (meal: MealInput) => request<Meal>("/api/meals", json("POST", meal)),
   updateMeal: (id: number, meal: MealInput) => request<Meal>(`/api/meals/${id}`, json("PUT", meal)),
   deleteMeal: (id: number) => request<void>(`/api/meals/${id}`, { method: "DELETE" }),
-  mealPhoto: (id: number) => blob(`/api/meals/${id}/photo`),
+  mealPhoto: (id: number, large = false) => blob(`/api/meals/${id}/photo${large ? "?size=large" : ""}`),
 };

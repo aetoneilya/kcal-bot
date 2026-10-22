@@ -1,11 +1,11 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
   import { api, type Reminders } from "../lib/api";
-  import { activities, direction, limits, targets, type Activity, type Profile, type Sex } from "../lib/targets";
+  import { direction, limits, targets, type Activity, type Profile, type Sex } from "../lib/targets";
   import { kcal as fmtKcal } from "../lib/nutrition";
   import { haptic, hapticSuccess } from "../lib/telegram";
-  import Icon from "../components/Icon.svelte";
   import WeightLog from "../components/WeightLog.svelte";
+  import ActivityPicker from "../components/ActivityPicker.svelte";
 
   let {
     profile,
@@ -141,19 +141,7 @@
   <p class="foot">Пол и возраст нужны формуле: обмен веществ у них заметно разный.</p>
 
   <h2 class="section-title"><span>Активность</span></h2>
-  <ul class="group" role="radiogroup" aria-label="Активность">
-    {#each activities as a (a.key)}
-      <li>
-        <button class="choice" role="radio" aria-checked={activity === a.key} onclick={() => pick((v) => (activity = v), a.key)}>
-          <span class="text">
-            <span>{a.label}</span>
-            <span class="sub">{a.hint}</span>
-          </span>
-          {#if activity === a.key}<span class="tick"><Icon name="check" /></span>{/if}
-        </button>
-      </li>
-    {/each}
-  </ul>
+  <ActivityPicker bind:value={activity} />
 
   {#if dir === "lose" || dir === "gain"}
     <h2 class="section-title"><span>{dir === "lose" ? "Худеть" : "Набирать"} в неделю</span></h2>
@@ -369,20 +357,6 @@
     transform: translateX(20px);
   }
 
-  .choice {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    width: 100%;
-    min-height: 56px;
-    padding: 8px 16px;
-    text-align: left;
-  }
-
-  .choice:active {
-    background: var(--field);
-  }
-
   .text {
     flex: 1;
     display: grid;
@@ -394,11 +368,7 @@
     color: var(--hint);
   }
 
-  .tick {
-    color: var(--accent);
-  }
-
-  .group + .section-title {
+  :global(.picker) + .section-title {
     margin-top: 22px;
   }
 
@@ -411,7 +381,9 @@
   .paces button {
     min-height: 44px;
     border-radius: var(--r-control);
-    background: var(--card);
+    background: var(--glass);
+    -webkit-backdrop-filter: var(--blur);
+    backdrop-filter: var(--blur);
     color: var(--hint);
   }
 

@@ -239,7 +239,9 @@
 
   .shot:not(.filled) {
     box-shadow: inset 0 0 0 1.5px var(--line-strong);
-    background: transparent;
+    background: var(--glass);
+    -webkit-backdrop-filter: var(--blur);
+    backdrop-filter: var(--blur);
   }
 
   .shoot {
@@ -469,7 +471,9 @@
 
   textarea {
     resize: none;
-    background: var(--card);
+    background: var(--glass-strong);
+    -webkit-backdrop-filter: var(--blur);
+    backdrop-filter: var(--blur);
     border-radius: var(--r);
     padding: 12px 14px;
   }

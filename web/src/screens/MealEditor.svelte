@@ -6,7 +6,9 @@
   import { blankItem, grams, kcal, sumTotals } from "../lib/nutrition";
   import { atTime, sameDay, timeValue } from "../lib/day";
   import { confirm, haptic, hapticSuccess } from "../lib/telegram";
-  import { base64, thumbnail } from "../lib/image";
+  import { base64, largePhoto, thumbnail } from "../lib/image";
+  import type { Targets } from "../lib/targets";
+  import MacroTiles from "../components/MacroTiles.svelte";
 
   let {
     day,
@@ -14,8 +16,57 @@
     draft,
     note = "",
     photos = [],
+    target = null,
     onDone,
-  }: { day: Date; meal?: Meal; draft?: Draft; note?: string; photos?: Blob[]; onDone: (notice?: string) => void } = $props();
+  }: {
+    day: Date;
+    meal?: Meal;
+    draft?: Draft;
+    note?: string;
+    photos?: Blob[];
+    target?: Targets | null;
+    onDone: (notice?: string) => void;
+  } = $props();
+
+  // The meal's photo across the top: the one just taken, or the saved big
+  // copy of an existing meal. None for meals typed in by hand.
+  let hero = $state("");
+  $effect(() => {
+    let url = "";
+    let stale = false;
+    untrack(() => {
+      if (photos?.length) {
+        url = URL.createObjectURL(photos[0]);
+        hero = url;
+      } else if (meal?.hasPhoto) {
+        api.mealPhoto(meal.id, true).then(
+          (b) => {
+            if (stale) return;
+            url = URL.createObjectURL(b);
+            hero = url;
+          },
+          () => {},
+        );
+      }
+    });
+    return () => {
+      stale = true;
+      if (url) URL.revokeObjectURL(url);
+    };
+  });
+
+  // "Обед · 390 г" over the title, from the time and the weight.
+  function slot(hhmm: string): string {
+    const h = Number(hhmm.slice(0, 2));
+    if (h < 11) return "Завтрак";
+    if (h < 16) return "Обед";
+    if (h < 18) return "Перекус";
+    return "Ужин";
+  }
+
+  // The tiles show the portion against the day's target, or the meal per
+  // 100 g to compare with a label.
+  let per = $state<"portion" | "100g">("portion");
 
   // A new meal on today defaults to now; on a past day, to noon.
   function initialTime(): string {
@@ -41,6 +92,13 @@
   const canAnswer = $derived(Boolean(draft) && Boolean(question));
 
   const totals = $derived(sumTotals(items));
+  const weight = $derived(items.reduce((sum, i) => sum + (Number(i.grams) || 0), 0));
+  const shown = $derived.by(() => {
+    if (per === "portion" || weight <= 0) return totals;
+    const k = 100 / weight;
+    return { kcal: totals.kcal * k, protein: totals.protein * k, fat: totals.fat * k, carbs: totals.carbs * k };
+  });
+  const overline = $derived(`${slot(time)}${weight > 0 ? ` · ${grams(weight)} г` : ""}`);
   const valid = $derived(items.length > 0 && items.every((i) => i.name.trim() && Number(i.grams) >= 0));
 
   async function answer(reply: string) {
@@ -92,7 +150,10 @@
     };
     try {
       if (meal) await api.updateMeal(meal.id, body);
-      else await api.createMeal({ ...body, photo: await preview() });
+      else {
+        const [photo, photoLarge] = await Promise.all([preview(thumbnail), preview(largePhoto)]);
+        await api.createMeal({ ...body, photo, photoLarge });
+      }
       hapticSuccess();
       onDone(meal ? "Сохранено" : "Записано");
     } catch (e) {
@@ -102,12 +163,13 @@
     }
   }
 
-  // The first photo, small, for the diary. Only a nicety: without it the
-  // meal still saves.
-  async function preview(): Promise<string | undefined> {
+  // The first photo, resized, for the diary and the meal's screen. Only a
+  // nicety: without it the meal still saves.
+  async function preview(resize: (b: Blob) => Promise<Blob>): Promise<string | undefined> {
     if (!photos?.length) return undefined;
     try {
-      return await base64(await thumbnail(photos[0]));
+      const small = await resize(photos[0]);
+      return small.size <= 400 * 1024 ? await base64(small) : undefined;
     } catch {
       return undefined;
     }
@@ -127,13 +189,42 @@
 </script>
 
 <div class="screen">
-  <header>
-    <input class="title round" bind:value={title} placeholder="Название" maxlength="80" aria-label="Название" />
-    <label class="time">
-      <Icon name="clock" size={16} />
-      <input class="num" type="time" bind:value={time} aria-label="Время" />
-    </label>
-  </header>
+  {#if hero}
+    <div class="hero">
+      <img src={hero} alt="" />
+      <label class="time glass">
+        <Icon name="clock" size={16} />
+        <input class="num" type="time" bind:value={time} aria-label="Время" />
+      </label>
+      <div class="caption">
+        <p class="overline num">{overline}</p>
+        <input class="title round" bind:value={title} placeholder="Название" maxlength="80" aria-label="Название" />
+      </div>
+    </div>
+  {:else}
+    <p class="overline num plain">{overline}</p>
+    <header>
+      <input class="title round" bind:value={title} placeholder="Название" maxlength="80" aria-label="Название" />
+      <label class="time glass">
+        <Icon name="clock" size={16} />
+        <input class="num" type="time" bind:value={time} aria-label="Время" />
+      </label>
+    </header>
+  {/if}
+
+  <section class="nutrition" aria-label="Пищевая ценность">
+    <div class="segmented" role="radiogroup" aria-label="Показать">
+      <button role="radio" aria-checked={per === "portion"} class:on={per === "portion"} onclick={() => { haptic(); per = "portion"; }}>На порцию</button>
+      <button role="radio" aria-checked={per === "100g"} class:on={per === "100g"} onclick={() => { haptic(); per = "100g"; }}>На 100 г</button>
+    </div>
+    <MacroTiles
+      protein={shown.protein}
+      fat={shown.fat}
+      carbs={shown.carbs}
+      energy={shown.kcal}
+      goals={per === "portion" && target ? { protein: target.protein, fat: target.fat, carbs: target.carbs, kcal: target.kcal } : null}
+    />
+  </section>
 
   {#if question}
     <div class="question" class:rethinking aria-busy={rethinking}>
@@ -219,7 +310,99 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    margin: 4px 0 16px;
+    margin: 0 0 16px;
+  }
+
+  /* The photo runs edge to edge and fades into the screen, so the title
+     below sits on the theme's own colour in light and dark alike. */
+  .hero {
+    position: relative;
+    height: min(44vh, 340px);
+    margin: -8px calc(-1 * var(--gutter)) 14px;
+  }
+
+  .hero img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    animation: settle 0.6s var(--ease-out);
+  }
+
+  @keyframes settle {
+    from {
+      opacity: 0;
+      transform: scale(1.04);
+    }
+  }
+
+  .hero::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to bottom, transparent 38%, color-mix(in srgb, var(--bg) 82%, transparent) 76%, var(--bg));
+    pointer-events: none;
+  }
+
+  .caption {
+    position: absolute;
+    left: var(--gutter);
+    right: var(--gutter);
+    bottom: 0;
+    z-index: 1;
+  }
+
+  .hero .time {
+    position: absolute;
+    top: 12px;
+    right: var(--gutter);
+    z-index: 1;
+  }
+
+  .overline {
+    margin: 0 0 2px;
+    color: var(--hint);
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  .overline.plain {
+    margin-top: 4px;
+  }
+
+  .caption .title {
+    font-size: 26px;
+    margin-left: -8px;
+    width: calc(100% + 8px);
+  }
+
+  .nutrition {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+
+  .segmented {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    padding: 2px;
+    border-radius: 10px;
+    background: var(--field);
+  }
+
+  .segmented button {
+    min-height: 34px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--hint);
+    transition: background-color 0.2s, color 0.2s;
+  }
+
+  .segmented .on {
+    background: var(--card);
+    color: var(--text);
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
   }
 
   .title {
@@ -243,7 +426,6 @@
     height: 36px;
     padding: 0 4px 0 10px;
     border-radius: 18px;
-    background: var(--card);
     color: var(--hint);
   }
 

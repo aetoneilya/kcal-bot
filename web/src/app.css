@@ -6,6 +6,11 @@
  * Colour lives on data: the accent marks the one primary action, and the
  * three macro hues appear only where macros are drawn. Everything else is
  * neutral.
+ *
+ * Surfaces are frosted glass over a faint light: two soft glows tinted by
+ * the theme's accent and the carbs green, and a pale diagonal beam. Cards
+ * let it through, blurred, so the screen has depth without a colour of its
+ * own; text always sits on the glass, never on the glow.
  */
 
 :root {
@@ -35,6 +40,16 @@
   --ok: #3aa864;
   --over: var(--warn);
 
+  --glass: color-mix(in srgb, var(--card) 70%, transparent);
+  --glass-strong: color-mix(in srgb, var(--card) 84%, transparent);
+  --glass-edge: rgb(255 255 255 / 0.65);
+  --glass-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 10px 30px -14px rgb(0 0 0 / 0.16);
+  --blur: blur(20px) saturate(160%);
+  --glow:
+    radial-gradient(110% 55% at 100% -8%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 62%),
+    radial-gradient(80% 45% at -12% 38%, color-mix(in srgb, var(--carbs) 13%, transparent), transparent 64%),
+    linear-gradient(118deg, transparent 38%, rgb(255 255 255 / 0.22) 47%, transparent 58%);
+
   --r: 16px;
   --r-control: 12px;
   --gutter: 16px;
@@ -45,15 +60,41 @@
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* Dark: Telegram's theme when it says (data-theme), else the system's. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: var(--tg-theme-secondary-bg-color, #0e0e11);
     --card: var(--tg-theme-section-bg-color, var(--tg-theme-bg-color, #1c1c21));
     --text: var(--tg-theme-text-color, #f3f3f6);
     --warn: #f0a93a;
+    --glass: color-mix(in srgb, var(--card) 62%, transparent);
+    --glass-strong: color-mix(in srgb, var(--card) 80%, transparent);
+    --glass-edge: rgb(255 255 255 / 0.08);
+    --glass-shadow: 0 10px 30px -14px rgb(0 0 0 / 0.5);
+    --glow:
+      radial-gradient(110% 55% at 100% -8%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 62%),
+      radial-gradient(80% 45% at -12% 38%, color-mix(in srgb, var(--carbs) 14%, transparent), transparent 64%),
+      linear-gradient(118deg, transparent 38%, rgb(255 255 255 / 0.04) 47%, transparent 58%);
     --treat: #f27fb2;
     --water: #4cb6ea;
   }
+}
+
+:root[data-theme="dark"] {
+  --bg: var(--tg-theme-secondary-bg-color, #0e0e11);
+  --card: var(--tg-theme-section-bg-color, var(--tg-theme-bg-color, #1c1c21));
+  --text: var(--tg-theme-text-color, #f3f3f6);
+  --warn: #f0a93a;
+  --glass: color-mix(in srgb, var(--card) 62%, transparent);
+  --glass-strong: color-mix(in srgb, var(--card) 80%, transparent);
+  --glass-edge: rgb(255 255 255 / 0.08);
+  --glass-shadow: 0 10px 30px -14px rgb(0 0 0 / 0.5);
+  --glow:
+    radial-gradient(110% 55% at 100% -8%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 62%),
+    radial-gradient(80% 45% at -12% 38%, color-mix(in srgb, var(--carbs) 14%, transparent), transparent 64%),
+    linear-gradient(118deg, transparent 38%, rgb(255 255 255 / 0.04) 47%, transparent 58%);
+  --treat: #f27fb2;
+  --water: #4cb6ea;
 }
 
 * {
@@ -68,6 +109,7 @@ body {
 
 body {
   background: var(--bg);
+  position: relative;
   color: var(--text);
   font-family: var(--font);
   font-size: 16px;
@@ -76,6 +118,27 @@ body {
   -webkit-tap-highlight-color: transparent;
   caret-color: var(--accent);
   overscroll-behavior-y: none;
+}
+
+/* The light behind everything; fixed, so it stays put while lists scroll. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: var(--glow);
+  pointer-events: none;
+}
+
+/* Frosted glass: the shared surface of cards, lists, bars. */
+.glass {
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  box-shadow:
+    inset 0 0.5px 0 var(--glass-edge),
+    inset 0 0 0 0.5px color-mix(in srgb, var(--glass-edge) 40%, transparent),
+    var(--glass-shadow);
 }
 
 ::selection {
@@ -151,7 +214,13 @@ input::-webkit-inner-spin-button {
   list-style: none;
   margin: 0;
   padding: 0;
-  background: var(--card);
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  box-shadow:
+    inset 0 0.5px 0 var(--glass-edge),
+    inset 0 0 0 0.5px color-mix(in srgb, var(--glass-edge) 40%, transparent),
+    var(--glass-shadow);
   border-radius: var(--r);
   overflow: hidden;
 }
@@ -171,7 +240,13 @@ input::-webkit-inner-spin-button {
 }
 
 .card {
-  background: var(--card);
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  box-shadow:
+    inset 0 0.5px 0 var(--glass-edge),
+    inset 0 0 0 0.5px color-mix(in srgb, var(--glass-edge) 40%, transparent),
+    var(--glass-shadow);
   border-radius: var(--r);
   padding: 16px;
 }
@@ -253,7 +328,11 @@ input::-webkit-inner-spin-button {
   z-index: 2;
   margin: 16px calc(-1 * var(--gutter)) 0;
   padding: 10px var(--gutter) calc(10px + var(--safe-bottom));
-  background: var(--bg);
+  /* A frosted toolbar: what scrolls under it blurs instead of showing through. */
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  box-shadow: inset 0 0.5px 0 var(--line);
   display: grid;
   gap: 8px;
 }
