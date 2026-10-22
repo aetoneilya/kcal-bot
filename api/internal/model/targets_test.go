@@ -29,13 +29,29 @@ func TestDailyTargetMatchesTheMiniApp(t *testing.T) {
 	}
 }
 
-func TestWaterGoal(t *testing.T) {
+func TestWaterGoalFollowsEnergySpent(t *testing.T) {
+	now := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
+	woman := Profile{Sex: SexFemale, BirthYear: 1998, HeightCm: 165, WeightKg: 60, Activity: ActivityModerate}
+	man := Profile{Sex: SexMale, BirthYear: 1996, HeightCm: 180, WeightKg: 80, Activity: ActivityModerate}
+	sitting, athlete := woman, man
+	sitting.Activity = ActivitySedentary
+	athlete.Activity = ActivityVeryActive
+	big := man
+	big.WeightKg, big.Activity = 140, ActivityVeryActive
 	for _, c := range []struct {
-		kg   float64
+		name string
+		p    *Profile
 		want int
-	}{{0, 2000}, {40, 1500}, {60, 1750}, {80, 2500}, {130, 3000}} {
-		if got := WaterGoalMl(c.kg); got != c.want {
-			t.Errorf("WaterGoalMl(%v) = %d, want %d", c.kg, got, c.want)
+	}{
+		{"no profile", nil, 2000},
+		{"woman, moderate", &woman, 1750}, // EFSA: 1.6 l from drinks
+		{"man, moderate", &man, 2250},     // EFSA: 2.0 l from drinks
+		{"woman, sitting", &sitting, 1500},
+		{"man, very active", &athlete, 2750},
+		{"capped", &big, 3500},
+	} {
+		if got := WaterGoalMl(c.p, now); got != c.want {
+			t.Errorf("%s: WaterGoalMl = %d, want %d", c.name, got, c.want)
 		}
 	}
 }

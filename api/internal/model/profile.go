@@ -138,12 +138,19 @@ func ValidateWater(w Water) error {
 	return nil
 }
 
-// WaterGoalMl is a day's water: 30 ml per kg of body weight, kept within
-// 1.5–3 l and rounded to a glass; 2 l without a weight.
-func WaterGoalMl(weightKg float64) int {
-	if weightKg <= 0 {
+// WaterGoalMl is how much to drink in a day, ml, rounded to a glass.
+//
+// Total water need follows energy spent: about 1 ml per kcal (EFSA 2010
+// based its adequate intakes partly on 1.0–1.15 l per 1000 kcal; the US
+// National Academies cite the same 1 ml/kcal rule), so sex, size, age and
+// activity all count through Expenditure. Food brings about a fifth of it,
+// so drinks are 0.8 ml per kcal. A 60 kg woman of moderate activity comes
+// out at 1.75 l and an 80 kg man at 2.25 l, near EFSA's 1.6 and 2.0 l from
+// drinks. Kept within 1.5–3.5 l; without a profile, 2 l.
+func WaterGoalMl(p *Profile, now time.Time) int {
+	if p == nil {
 		return 2000
 	}
-	ml := math.Min(math.Max(weightKg*30, 1500), 3000)
+	ml := math.Min(math.Max(0.8*Expenditure(*p, now), 1500), 3500)
 	return int(math.Round(ml/250) * 250)
 }

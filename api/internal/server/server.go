@@ -333,9 +333,9 @@ func (s *Server) handleSaveWater(w http.ResponseWriter, r *http.Request) {
 func (s *Server) waterGoal(ctx context.Context, userID int64) int {
 	profile, err := s.st.Profile(ctx, userID)
 	if err != nil {
-		return model.WaterGoalMl(0)
+		return model.WaterGoalMl(nil, time.Now())
 	}
-	return model.WaterGoalMl(profile.WeightKg)
+	return model.WaterGoalMl(&profile, time.Now())
 }
 
 func (s *Server) handleSaveWeight(w http.ResponseWriter, r *http.Request) {
