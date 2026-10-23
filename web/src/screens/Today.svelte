@@ -23,6 +23,7 @@
     treat = null,
     changes = 0,
     onKitten,
+    onCalendar,
   }: {
     day: Date;
     target: Targets | null;
@@ -36,6 +37,8 @@
     changes?: number;
     /** The empty day's kitten, tapped five times, calls a dancing cat. */
     onKitten?: () => void;
+    /** The date in the header opens the calendar on its month. */
+    onCalendar?: () => void;
     onGoal: () => void;
   } = $props();
 
@@ -176,10 +179,10 @@
     <button class="nav" onclick={() => shift(-1)} aria-label="Предыдущий день">
       <Icon name="chevron-left" size={24} />
     </button>
-    <div class="heading">
+    <button class="heading" onclick={onCalendar} aria-label={`${title}${subtitle ? `, ${subtitle}` : ""} — открыть календарь`}>
       <h1 class="round">{title}</h1>
       {#if subtitle}<p class="hint">{subtitle}</p>{/if}
-    </div>
+    </button>
     <button class="nav" onclick={() => shift(1)} disabled={isToday} aria-label="Следующий день">
       <Icon name="chevron-right" size={24} />
     </button>
@@ -360,6 +363,13 @@
 
   .heading {
     text-align: center;
+    border-radius: var(--r-control);
+    padding: 2px 8px;
+    transition: background-color 0.15s;
+  }
+
+  .heading:active {
+    background: var(--field);
   }
 
   h1 {

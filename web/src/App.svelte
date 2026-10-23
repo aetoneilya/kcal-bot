@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { flushSync, onMount } from "svelte";
+  import { prefersReducedMotion } from "svelte/motion";
   import { fly, fade } from "svelte/transition";
   import { cubicOut } from "svelte/easing";
   import Sheet from "./components/Sheet.svelte";
@@ -110,9 +111,21 @@
     clearTimeout(noticeTimer);
     noticeTimer = setTimeout(() => (notice = ""), 1800);
   }
+  // Switching tabs cross-fades a snapshot of the old screen into the new
+  // one, sliding toward the tab chosen (View Transitions; app.css). Being a
+  // snapshot, it leaves the glass's blur alone — a fade on the live page
+  // dropped it until the fade ended. Without the API it switches at once.
+  const order: Tab[] = ["today", "calendar", "profile"];
   function go(next: Tab) {
-    if (next !== tab) haptic();
-    tab = next;
+    if (next === tab) return;
+    haptic();
+    const doc = document as Document & { startViewTransition?: (update: () => void) => unknown };
+    if (!doc.startViewTransition || prefersReducedMotion.current) {
+      tab = next;
+      return;
+    }
+    document.documentElement.dataset.nav = order.indexOf(next) > order.indexOf(tab) ? "forward" : "back";
+    doc.startViewTransition(() => flushSync(() => (tab = next)));
   }
 
   // A weigh-in changes the profile's weight on the server; read it back.
@@ -159,6 +172,7 @@
       onAdd={(origin) => open({ name: "capture" }, origin)}
       onOpen={(meal, origin) => open({ name: "editor", meal }, origin)}
       onGoal={() => go("profile")}
+      onCalendar={() => go("calendar")}
     />
   {:else if tab === "calendar"}
     <Calendar
@@ -296,6 +310,8 @@
   }
 
   .tabbar {
+    /* Stays put while the screen above it changes. */
+    view-transition-name: tabbar;
     position: fixed;
     left: 0;
     right: 0;

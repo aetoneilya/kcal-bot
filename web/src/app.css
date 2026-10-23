@@ -183,6 +183,44 @@ body::after {
     --bloom 1.6s ease;
 }
 
+/* Tab switches (App.svelte go): the old screen slides out and fades as the
+   new one slides in from the side of the tab chosen. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.3s;
+  animation-timing-function: var(--ease-out);
+}
+
+::view-transition-old(root) {
+  animation-name: tab-out;
+}
+
+::view-transition-new(root) {
+  animation-name: tab-in;
+}
+
+:root {
+  --nav-dir: 1;
+}
+
+:root[data-nav="back"] {
+  --nav-dir: -1;
+}
+
+@keyframes tab-out {
+  to {
+    opacity: 0;
+    transform: translateX(calc(var(--nav-dir) * -28px));
+  }
+}
+
+@keyframes tab-in {
+  from {
+    opacity: 0;
+    transform: translateX(calc(var(--nav-dir) * 28px));
+  }
+}
+
 /* Frosted glass: the shared surface of cards, lists, bars. */
 .glass {
   background: var(--glass);
