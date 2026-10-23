@@ -50,12 +50,9 @@ type Config struct {
 	Products Products
 	// Notifier hears about new people and spent budgets. Nil drops them.
 	Notifier Notifier
-	// Treats are compliments and cat videos for chosen people. Nil gives
-	// them to nobody.
+	// Treats are the dancing cats, for anyone, and compliments for chosen
+	// people. Nil turns both off.
 	Treats *treats.Treats
-	// Owner is the admin's Telegram id; the app shows them its design lab.
-	// 0 shows it to nobody (and to everyone in DevMode).
-	Owner int64
 	// AllowedOrigin is the single browser origin permitted cross-origin calls
 	// in production. Empty means same-origin only. Ignored in DevMode.
 	AllowedOrigin string
@@ -137,7 +134,8 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("DELETE /api/meals/{id}", s.handleDeleteMeal)
 	api.HandleFunc("GET /api/meals/{id}/photo", s.handleMealPhoto)
 	api.HandleFunc("GET /api/treats", s.handleTreats)
-	api.HandleFunc("GET /api/treats/cats/{name}", s.handleCat)
+	api.HandleFunc("GET /api/cats", s.handleCats)
+	api.HandleFunc("GET /api/cats/{name}", s.handleCat)
 
 	root := http.NewServeMux()
 	// Health bypasses authentication and request logging (probes are noise).
@@ -165,13 +163,11 @@ type meResponse struct {
 	AnalysesLeft *int           `json:"analysesLeft"` // nil when there is no cap
 	Profile      *model.Profile `json:"profile"`      // nil until filled in
 	Treats       bool           `json:"treats"`
-	Lab          bool           `json:"lab"` // the owner's look-and-feel playground
 }
 
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	user := userFrom(r.Context())
-	response := meResponse{User: user, Estimator: s.estimator.Name(), Treats: s.cfg.Treats.For(user),
-		Lab: s.cfg.DevMode || (s.cfg.Owner != 0 && user.ID == s.cfg.Owner)}
+	response := meResponse{User: user, Estimator: s.estimator.Name(), Treats: s.cfg.Treats.For(user)}
 	if s.cfg.DailyLimit > 0 {
 		used, err := s.st.AnalysesUsed(r.Context(), user.ID)
 		if err != nil {
@@ -197,8 +193,8 @@ type treatsResponse struct {
 	Cats        []string `json:"cats"`
 }
 
-// handleTreats lists what there is; to anyone without treats it is a 404,
-// the same as a route that does not exist.
+// handleTreats gives the chosen people their compliments and the cats; to
+// anyone else it is a 404, the same as a route that does not exist.
 func (s *Server) handleTreats(w http.ResponseWriter, r *http.Request) {
 	if !s.cfg.Treats.For(userFrom(r.Context())) {
 		writeError(w, http.StatusNotFound, "not found")
@@ -217,11 +213,18 @@ func (s *Server) handleTreats(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, treatsResponse{Compliments: append([]string{}, compliments...), Cats: append([]string{}, cats...)})
 }
 
-func (s *Server) handleCat(w http.ResponseWriter, r *http.Request) {
-	if !s.cfg.Treats.For(userFrom(r.Context())) {
-		writeError(w, http.StatusNotFound, "not found")
+// handleCats lists the dancing cats; anyone may summon one (the empty
+// diary's kitten, tapped five times).
+func (s *Server) handleCats(w http.ResponseWriter, r *http.Request) {
+	cats, err := s.cfg.Treats.Cats()
+	if err != nil {
+		s.fail(w, r, err)
 		return
 	}
+	writeJSON(w, http.StatusOK, append([]string{}, cats...))
+}
+
+func (s *Server) handleCat(w http.ResponseWriter, r *http.Request) {
 	path, mediaType, err := s.cfg.Treats.Cat(r.PathValue("name"))
 	if errors.Is(err, os.ErrNotExist) {
 		writeError(w, http.StatusNotFound, "not found")

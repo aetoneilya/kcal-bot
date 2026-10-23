@@ -83,10 +83,9 @@ export interface Me {
   analysesLeft: number | null;
   /** Null until the person fills in the form. */
   profile: (Profile & { updatedAt: string }) | null;
-  /** Compliments and cats are on for this person. */
+  /** This person gets compliments and a cat after each new meal; any
+   *  person can summon cats from the empty day's kitten. */
   treats: boolean;
-  /** The owner: the look-and-feel lab opens on a long press of the title. */
-  lab: boolean;
 }
 
 export class ApiError extends Error {
@@ -159,7 +158,8 @@ export const api = {
   deleteWeight: (day: string) => request<void>(`/api/weights/${day}`, { method: "DELETE" }),
 
   treats: () => request<Treats>("/api/treats"),
-  cat: (name: string) => blob(`/api/treats/cats/${encodeURIComponent(name)}`),
+  cats: () => request<string[]>("/api/cats"),
+  cat: (name: string) => blob(`/api/cats/${encodeURIComponent(name)}`),
 
   meals: (from: Date, to: Date) =>
     request<Meal[]>(

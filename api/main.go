@@ -151,7 +151,7 @@ func main() {
 		}
 	}
 
-	// Compliments and cat videos for the people named in TREAT_USERS.
+	// Dancing cats for anyone, compliments for the people in TREAT_USERS.
 	gifts := treats.New(os.Getenv("TREATS_DIR"), os.Getenv("TREAT_USERS"))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -191,7 +191,6 @@ func main() {
 		TotalDailySpendLimit: totalSpendLimit,
 		Notifier:             notifier,
 		Treats:               gifts,
-		Owner:                ownerID,
 		Products:             &foodfacts.Client{UserAgent: "KalorieKitten/1.0 (+" + *origin + ")"},
 		AllowedOrigin:        *origin,
 		StaticDir:            *staticDir,

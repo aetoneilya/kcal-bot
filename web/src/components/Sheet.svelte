@@ -142,18 +142,14 @@
 
   .sheet::before {
     background: var(--glow);
-    opacity: var(--glow-opacity, 0.62);
-  }
-
-  :global(:root[data-bg="data"]) .sheet::before {
-    opacity: calc(var(--glow-opacity, 0.62) * var(--day-glow, 1));
+    opacity: calc(var(--glow-opacity) * var(--day-glow, 1));
   }
 
   .sheet::after {
     background-image: var(--grain-image, none);
     background-size: 160px 160px;
-    opacity: var(--grain-opacity, 0.06);
-    mix-blend-mode: var(--grain-blend, soft-light);
+    opacity: var(--grain-opacity);
+    mix-blend-mode: soft-light;
   }
 
   .content {

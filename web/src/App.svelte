@@ -10,14 +10,13 @@
   import Calendar from "./screens/Calendar.svelte";
   import Icon, { type IconName } from "./components/Icon.svelte";
   import CatOverlay from "./components/CatOverlay.svelte";
-  import LookLab from "./components/LookLab.svelte";
-  import { apply as applyLook, load as loadLook } from "./lib/look";
+  import { drawGrain } from "./lib/look";
   import { api, type Draft, type Meal } from "./lib/api";
   import { startOfDay } from "./lib/day";
   import { targets, type Profile } from "./lib/targets";
   import { haptic, inTelegram, onBack } from "./lib/telegram";
   import { ms } from "./lib/motion";
-  import { Cats, complimentOfDay, pick, type Treats } from "./lib/treats";
+  import { catLines, Cats, complimentOfDay, pick, type Treats } from "./lib/treats";
 
   // Three top-level sections live in the tab bar; adding and editing a meal
   // are tasks on a sheet that grows out of the row or button that opened
@@ -41,27 +40,35 @@
   let profile = $state<Profile | null | undefined>(undefined);
   const target = $derived(profile ? targets(profile) : null);
 
-  // The owner's look lab; a saved look applies on every start.
-  let lab = $state(false);
-  let labOpen = $state(false);
-  applyLook(loadLook());
+  drawGrain();
 
-  // Compliments and cats, for the people the server says get them.
+  // Compliments, for the people the server says get them; cats, for anyone
+  // who summons one (the empty diary's kitten, tapped five times).
   let treats = $state<Treats | null>(null);
-  let cats: Cats | null = null;
+  // One Cats for the session, from one listing: concurrent summons share the
+  // request, and a failed one is forgotten so the next summon tries again.
+  let cats: Promise<Cats> | null = null;
+  function loadCats(names?: string[]): Promise<Cats> {
+    if (!cats) {
+      const listing = names ? Promise.resolve(names) : api.cats();
+      cats = listing.then((list) => new Cats(list, api.cat));
+      cats.catch(() => (cats = null));
+    }
+    return cats;
+  }
   const todaysCompliment = $derived(treats ? complimentOfDay(treats.compliments, new Date()) : "");
   let cat = $state<{ video: Promise<string> | null; compliment: string; title: string } | null>(null);
 
-  function showCat(title = "") {
-    if (!treats) return;
+  async function showCat(title = "") {
     haptic("soft");
+    const herd = await loadCats().catch(() => null);
     cat = {
-      video: cats?.any ? cats.next() : null,
-      compliment: pick(treats.compliments, todaysCompliment) ?? "",
+      video: herd?.any ? herd.next() : null,
+      compliment: (treats ? pick(treats.compliments, todaysCompliment) : pick(catLines)) ?? "",
       title,
     };
     // Have the next one ready, so it starts at once and with sound.
-    cats?.prefetch();
+    herd?.prefetch();
   }
 
   let sheet = $state<Sheet>();
@@ -114,12 +121,10 @@
       .me()
       .then((me) => {
         profile = me.profile;
-        lab = me.lab;
         if (me.treats && !treats) {
           api.treats().then((t) => {
             treats = t;
-            cats = new Cats(t.cats, api.cat);
-            cats.prefetch();
+            loadCats(t.cats).then((herd) => herd.prefetch());
           }, () => {});
         }
       })
@@ -149,11 +154,11 @@
       {target}
       profileLoaded={profile !== undefined}
       treat={treats ? { compliment: todaysCompliment, cats: treats.cats.length > 0, onCat: () => showCat() } : null}
+      onKitten={() => showCat()}
       {changes}
       onAdd={(origin) => open({ name: "capture" }, origin)}
       onOpen={(meal, origin) => open({ name: "editor", meal }, origin)}
       onGoal={() => go("profile")}
-      onLab={lab ? () => (labOpen = true) : undefined}
     />
   {:else if tab === "calendar"}
     <Calendar
@@ -207,10 +212,6 @@
     </div>
     {/key}
   </Sheet>
-{/if}
-
-{#if labOpen}
-  <LookLab onClose={() => (labOpen = false)} />
 {/if}
 
 {#if cat}

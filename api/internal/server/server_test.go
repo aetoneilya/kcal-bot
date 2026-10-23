@@ -487,7 +487,7 @@ func TestMealRejectsUnknownFields(t *testing.T) {
 	}
 }
 
-func TestTreatsAreOnlyForChosenPeople(t *testing.T) {
+func TestComplimentsAreForChosenPeopleCatsForAll(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, "cats"), 0o755); err != nil {
 		t.Fatal(err)
@@ -509,22 +509,26 @@ func TestTreatsAreOnlyForChosenPeople(t *testing.T) {
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Ты чудо") || !strings.Contains(w.Body.String(), "dance.mp4") {
 		t.Fatalf("treats: %d %s", w.Code, w.Body)
 	}
-	w = do(t, h, 7, "GET", "/api/treats/cats/dance.mp4", nil, "")
-	if w.Code != http.StatusOK || w.Header().Get("Content-Type") != "video/mp4" || w.Body.String() != "not really a video" {
-		t.Fatalf("cat: %d %q", w.Code, w.Header().Get("Content-Type"))
-	}
-	if w := do(t, h, 7, "GET", "/api/treats/cats/..%2Fcompliments.txt", nil, ""); w.Code != http.StatusNotFound {
-		t.Fatalf("path outside cats: %d", w.Code)
-	}
 
 	_ = json.NewDecoder(do(t, h, 8, "GET", "/api/me", nil, "").Body).Decode(&me)
 	if me.Treats {
 		t.Fatal("someone else: me.treats is true")
 	}
-	for _, path := range []string{"/api/treats", "/api/treats/cats/dance.mp4"} {
-		if w := do(t, h, 8, "GET", path, nil, ""); w.Code != http.StatusNotFound {
-			t.Errorf("someone else: %s = %d", path, w.Code)
+	if w := do(t, h, 8, "GET", "/api/treats", nil, ""); w.Code != http.StatusNotFound {
+		t.Errorf("someone else gets compliments: %d", w.Code)
+	}
+	for _, id := range []int64{7, 8} {
+		w := do(t, h, id, "GET", "/api/cats", nil, "")
+		if w.Code != http.StatusOK || strings.TrimSpace(w.Body.String()) != `["dance.mp4"]` {
+			t.Fatalf("user %d cats: %d %s", id, w.Code, w.Body)
 		}
+		w = do(t, h, id, "GET", "/api/cats/dance.mp4", nil, "")
+		if w.Code != http.StatusOK || w.Header().Get("Content-Type") != "video/mp4" || w.Body.String() != "not really a video" {
+			t.Fatalf("user %d cat: %d %q", id, w.Code, w.Header().Get("Content-Type"))
+		}
+	}
+	if w := do(t, h, 8, "GET", "/api/cats/..%2Fcompliments.txt", nil, ""); w.Code != http.StatusNotFound {
+		t.Fatalf("path outside cats: %d", w.Code)
 	}
 }
 
@@ -633,16 +637,5 @@ func TestLargePhotoFallsBackToThePreview(t *testing.T) {
 	_ = json.NewDecoder(do(t, h, 7, "POST", "/api/meals", jsonBody(t, meal), "application/json").Body).Decode(&created)
 	if w := do(t, h, 7, "GET", fmt.Sprintf("/api/meals/%d/photo?size=large", created.ID), nil, ""); w.Body.String() != string(jpeg) {
 		t.Fatalf("fallback: %d %q", w.Code, w.Body)
-	}
-}
-
-func TestOnlyTheOwnerGetsTheLab(t *testing.T) {
-	h := newTestServer(t, &stubEstimator{}, Config{Owner: 7})
-	for id, want := range map[int64]bool{7: true, 8: false} {
-		var me struct{ Lab bool }
-		_ = json.NewDecoder(do(t, h, id, "GET", "/api/me", nil, "").Body).Decode(&me)
-		if me.Lab != want {
-			t.Errorf("user %d: lab = %v, want %v", id, me.Lab, want)
-		}
 	}
 }

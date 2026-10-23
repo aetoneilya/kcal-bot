@@ -189,33 +189,47 @@
 </script>
 
 <div class="screen">
+  <!-- "Обед · 420 г" and the time share a line above the title, so a long
+       title gets the whole width. -->
+  {#snippet meta()}
+    <div class="meta">
+      <p class="overline num">{overline}</p>
+      <label class="time glass">
+        <Icon name="clock" size={15} />
+        <input class="num" type="time" bind:value={time} aria-label="Время" />
+      </label>
+    </div>
+  {/snippet}
   {#if hero}
     <div class="hero">
       <img src={hero} alt="" />
-      <label class="time glass">
-        <Icon name="clock" size={16} />
-        <input class="num" type="time" bind:value={time} aria-label="Время" />
-      </label>
       <div class="caption">
-        <p class="overline num">{overline}</p>
+        {@render meta()}
         <input class="title round" bind:value={title} placeholder="Название" maxlength="80" aria-label="Название" />
       </div>
     </div>
   {:else}
-    <p class="overline num plain">{overline}</p>
     <header>
+      {@render meta()}
       <input class="title round" bind:value={title} placeholder="Название" maxlength="80" aria-label="Название" />
-      <label class="time glass">
-        <Icon name="clock" size={16} />
-        <input class="num" type="time" bind:value={time} aria-label="Время" />
-      </label>
     </header>
   {/if}
 
   <section class="nutrition" aria-label="Пищевая ценность">
-    <div class="segmented" role="radiogroup" aria-label="Показать">
-      <button role="radio" aria-checked={per === "portion"} class:on={per === "portion"} onclick={() => { haptic(); per = "portion"; }}>На порцию</button>
-      <button role="radio" aria-checked={per === "100g"} class:on={per === "100g"} onclick={() => { haptic(); per = "100g"; }}>На 100 г</button>
+    <div class="per">
+      <span class="label">{per === "100g" ? "На 100 г" : "На порцию"}</span>
+      <button
+        class="toggle"
+        role="switch"
+        aria-checked={per === "100g"}
+        aria-label="Показать на 100 г"
+        onclick={() => {
+          haptic();
+          per = per === "100g" ? "portion" : "100g";
+        }}
+      >
+        <span>100 г</span><i></i>
+      </button>
     </div>
     <MacroTiles
       protein={shown.protein}
@@ -307,10 +321,14 @@
   }
 
   header {
+    margin: 4px 0 16px;
+  }
+
+  .meta {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 8px;
-    margin: 0 0 16px;
   }
 
   /* The photo runs edge to edge and fades into the screen, so the title
@@ -352,28 +370,15 @@
     z-index: 1;
   }
 
-  .hero .time {
-    position: absolute;
-    top: 12px;
-    right: var(--gutter);
-    z-index: 1;
-  }
-
   .overline {
-    margin: 0 0 2px;
+    margin: 0;
     color: var(--hint);
     font-size: 13px;
     font-weight: 500;
   }
 
-  .overline.plain {
-    margin-top: 4px;
-  }
-
   .caption .title {
     font-size: 26px;
-    margin-left: -8px;
-    width: calc(100% + 8px);
   }
 
   .nutrition {
@@ -382,31 +387,63 @@
     margin-bottom: 18px;
   }
 
-  .segmented {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    padding: 2px;
-    border-radius: 10px;
-    background: var(--field);
+  /* What the tiles show, and a small switch to flip it to per 100 g. */
+  .per {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
   }
 
-  .segmented button {
-    min-height: 34px;
-    border-radius: 8px;
-    font-size: 14px;
-    font-weight: 500;
+  .per .label {
     color: var(--hint);
-    transition: background-color 0.2s, color 0.2s;
+    font-size: 13px;
+    font-weight: 500;
   }
 
-  .segmented .on {
-    background: var(--card);
-    color: var(--text);
-    box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
+  .toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+    color: var(--hint);
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  .toggle i {
+    position: relative;
+    width: 36px;
+    height: 22px;
+    border-radius: 11px;
+    background: var(--line-strong);
+    transition: background-color 0.2s;
+  }
+
+  .toggle i::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
+    transition: transform 0.2s var(--ease-out);
+  }
+
+  .toggle[aria-checked="true"] i {
+    background: var(--accent);
+  }
+
+  .toggle[aria-checked="true"] i::after {
+    transform: translateX(14px);
   }
 
   .title {
-    font-size: 22px;
+    width: calc(100% + 8px);
+    margin-top: 2px;
+    font-size: 24px;
     font-weight: 700;
     letter-spacing: -0.01em;
     background: transparent;

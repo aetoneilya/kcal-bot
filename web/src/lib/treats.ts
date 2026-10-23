@@ -1,6 +1,7 @@
 /**
- * Compliments and dancing cats for the people the server picked (see
- * api/internal/treats). The lists come from the server; this only chooses.
+ * Dancing cats, for anyone who summons one, and compliments, for the people
+ * the server picked (see api/internal/treats). The lists come from the
+ * server; this only chooses.
  */
 
 export interface Treats {
@@ -8,6 +9,15 @@ export interface Treats {
   /** Video file names, fetched one at a time through the API. */
   cats: string[];
 }
+
+/** What a summoned cat says to someone without compliments of their own. */
+export const catLines = [
+  "Мяу! Секретный котик найден 🐾",
+  "Котик одобряет твой дневник",
+  "Пять тапов — и вот он, котик",
+  "Котики тоже за правильное питание",
+  "Котик пришёл проверить, как дела",
+];
 
 /** The same compliment all day, the next one tomorrow, through the whole list. */
 export function complimentOfDay(list: string[], day: Date): string {

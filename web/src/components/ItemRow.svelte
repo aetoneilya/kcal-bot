@@ -8,9 +8,16 @@
   // Density is usually right and rarely touched, so it hides behind a tap.
   let open = $state(false);
   const t = $derived(lineTotals(item));
+  // Only a fresh estimate has "low" items: saving marks them checked (the
+  // server stores them as "high"). Touching the weight checks it too, on the
+  // item itself, so the mark stays with it when rows move.
   const unsure = $derived(item.confidence === "low");
+  function check() {
+    if (item.confidence === "low") item.confidence = "high";
+  }
 
   function step(delta: number) {
+    check();
     item.grams = Math.max(0, Math.round((Number(item.grams) || 0) + delta));
   }
 </script>
@@ -25,7 +32,7 @@
     <div class="stepper" class:unsure>
       <button onclick={() => step(-10)} aria-label="Минус 10 грамм"><Icon name="minus" size={18} /></button>
       <label>
-        <input class="num" type="number" inputmode="decimal" min="0" max="5000" bind:value={item.grams} aria-label="Вес, г" />
+        <input class="num" type="number" inputmode="decimal" min="0" max="5000" bind:value={item.grams} oninput={check} aria-label="Вес, г" />
         <span>г</span>
       </label>
       <button onclick={() => step(10)} aria-label="Плюс 10 грамм"><Icon name="plus" size={18} /></button>

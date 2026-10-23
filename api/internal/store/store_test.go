@@ -30,7 +30,7 @@ func sampleMeal(at time.Time) MealInput {
 		EatenAt: at,
 		Title:   "Гречка с курицей",
 		Items: []model.Item{
-			{Name: "гречка", Grams: 180, Kcal100: 110, Protein100: 4.2, Fat100: 1.1, Carbs100: 21.3, Confidence: model.ConfidenceMedium},
+			{Name: "гречка", Grams: 180, Kcal100: 110, Protein100: 4.2, Fat100: 1.1, Carbs100: 21.3, Confidence: model.ConfidenceLow},
 			{Name: "курица", Grams: 150, Kcal100: 185, Protein100: 24, Fat100: 9.8},
 		},
 	}
@@ -45,7 +45,9 @@ func TestMealRoundTripAndRange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(created.Items) != 2 || created.Items[0].Name != "гречка" || created.Items[1].Confidence != model.ConfidenceHigh {
+	// A saved "low" stands checked, like an item typed in by hand.
+	if len(created.Items) != 2 || created.Items[0].Name != "гречка" || created.Items[0].Confidence != model.ConfidenceHigh ||
+		created.Items[1].Confidence != model.ConfidenceHigh {
 		t.Fatalf("items not stored in order with defaults: %+v", created.Items)
 	}
 	if _, err := st.CreateMeal(ctx, 1, sampleMeal(day.Add(-time.Hour))); err != nil {

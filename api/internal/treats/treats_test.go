@@ -28,13 +28,20 @@ func TestForMatchesIDsAndUsernames(t *testing.T) {
 	}
 }
 
-func TestNewIsOffWithoutPeopleOrDir(t *testing.T) {
-	if New(t.TempDir(), " , ") != nil || New("", "sunny") != nil {
-		t.Fatal("expected nil")
+func TestNoDirTurnsItOffNoPeopleKeepsTheCats(t *testing.T) {
+	if New("", "sunny") != nil {
+		t.Fatal("expected nil without a directory")
 	}
 	var tr *Treats
 	if tr.For(model.User{ID: 1, Username: "sunny"}) {
 		t.Fatal("nil Treats gave a treat")
+	}
+	if cats, err := tr.Cats(); cats != nil || err != nil {
+		t.Fatalf("nil Treats has cats: %v %v", cats, err)
+	}
+	nobody := New(t.TempDir(), " , ")
+	if nobody == nil || nobody.For(model.User{ID: 1, Username: "sunny"}) {
+		t.Fatal("with no people: want the directory on and no compliments")
 	}
 }
 

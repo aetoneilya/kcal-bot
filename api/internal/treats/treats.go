@@ -1,6 +1,6 @@
-// Package treats keeps the little extras chosen people get: compliments and
-// short dancing-cat videos. Both live in a directory on the server, outside
-// git:
+// Package treats keeps the little extras: short dancing-cat videos anyone
+// can summon, and compliments for chosen people. Both live in a directory on
+// the server, outside git:
 //
 //	treats/
 //	  compliments.txt   one per line; blank lines and # comments are skipped
@@ -29,9 +29,9 @@ type Treats struct {
 	names map[string]bool // lower case, without @
 }
 
-// New takes who gets treats as a comma-separated list of Telegram ids or
-// usernames ("@name" or "name"). It returns nil, which gives treats to
-// nobody, when the list or the directory is empty.
+// New takes who gets compliments as a comma-separated list of Telegram ids
+// or usernames ("@name" or "name"). It returns nil, which turns everything
+// off, when there is no directory; with no people the cats still dance.
 func New(dir, people string) *Treats {
 	t := &Treats{Dir: dir, ids: map[int64]bool{}, names: map[string]bool{}}
 	for _, field := range strings.Split(people, ",") {
@@ -45,7 +45,7 @@ func New(dir, people string) *Treats {
 			t.names[strings.ToLower(strings.TrimPrefix(field, "@"))] = true
 		}
 	}
-	if dir == "" || len(t.ids)+len(t.names) == 0 {
+	if dir == "" {
 		return nil
 	}
 	return t
@@ -91,8 +91,12 @@ func (t *Treats) Compliment() string {
 
 var videoTypes = map[string]string{".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime"}
 
-// Cats lists the video file names in cats/, sorted; none when it is missing.
+// Cats lists the video file names in cats/, sorted; none when it is missing
+// or on a nil Treats.
 func (t *Treats) Cats() ([]string, error) {
+	if t == nil {
+		return nil, nil
+	}
 	entries, err := os.ReadDir(filepath.Join(t.Dir, "cats"))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
@@ -113,6 +117,9 @@ func (t *Treats) Cats() ([]string, error) {
 // Cat returns the path and media type of one listed video. A name that is
 // not in the listing — a path, a dot file — is os.ErrNotExist.
 func (t *Treats) Cat(name string) (path, mediaType string, err error) {
+	if t == nil {
+		return "", "", os.ErrNotExist
+	}
 	names, err := t.Cats()
 	if err != nil {
 		return "", "", err

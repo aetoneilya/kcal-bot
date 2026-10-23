@@ -750,9 +750,11 @@ func (s *Store) queryMeals(ctx context.Context, where string, args ...any) ([]mo
 
 func insertItems(ctx context.Context, tx *sql.Tx, mealID int64, items []model.Item) error {
 	for position, item := range items {
+		// Typed in by hand, or saved after the owner saw the model's "low"
+		// (unsure, please check): either way the weight stands checked.
 		confidence := item.Confidence
-		if confidence == "" {
-			confidence = model.ConfidenceHigh // typed in by hand
+		if confidence == "" || confidence == model.ConfidenceLow {
+			confidence = model.ConfidenceHigh
 		}
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO meal_items (meal_id, position, name, grams, kcal_100, protein_100, fat_100, carbs_100, confidence)

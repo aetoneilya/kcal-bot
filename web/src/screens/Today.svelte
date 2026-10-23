@@ -2,7 +2,7 @@
   import { api, type Meal } from "../lib/api";
   import { add, energyShares, grams, kcal, sumTotals, type Totals } from "../lib/nutrition";
   import { addDays, dayKey, dayLabel, fullDate, startOfDay, timeLabel } from "../lib/day";
-  import { arrive, lastShown, page, remember } from "../lib/motion";
+  import { arrive, lastShown, ms, page, remember } from "../lib/motion";
   import { setDay } from "../lib/look";
   import { haptic } from "../lib/telegram";
   import type { Targets } from "../lib/targets";
@@ -22,7 +22,7 @@
     onGoal,
     treat = null,
     changes = 0,
-    onLab,
+    onKitten,
   }: {
     day: Date;
     target: Targets | null;
@@ -34,8 +34,8 @@
     onOpen: (meal: Meal, origin: Element) => void;
     /** Bumped when a meal was saved or deleted elsewhere: reload. */
     changes?: number;
-    /** The owner's look lab, opened by holding the title. */
-    onLab?: () => void;
+    /** The empty day's kitten, tapped five times, calls a dancing cat. */
+    onKitten?: () => void;
     onGoal: () => void;
   } = $props();
 
@@ -137,16 +137,32 @@
     setDay({ meals: meals.length, kcal: totals.kcal, target: target?.kcal ?? null });
   });
 
-  // Holding the title opens the owner's look lab.
-  let hold: ReturnType<typeof setTimeout> | undefined;
-  function pressTitle() {
-    if (!onLab) return;
-    hold = setTimeout(() => {
-      haptic("medium");
-      onLab?.();
-    }, 550);
+  // Tap the empty day's kitten: it squeaks each time, and on the fifth a
+  // dancing cat comes. Taps more than a second and a half apart start over.
+  let taps = $state(0);
+  let tapTimer: ReturnType<typeof setTimeout> | undefined;
+  let squishEl = $state<HTMLSpanElement>();
+  function tapKitten() {
+    clearTimeout(tapTimer);
+    taps++;
+    // Restarted on every tap without remounting the kitten.
+    squishEl?.animate(
+      [
+        { transform: "scale(1)" },
+        { transform: "scale(1.12, 0.86)", offset: 0.4 },
+        { transform: "scale(0.94, 1.06)", offset: 0.7 },
+        { transform: "scale(1)" },
+      ],
+      { duration: ms(320), easing: "cubic-bezier(0.16, 1, 0.3, 1)" },
+    );
+    haptic(taps >= 5 ? "heavy" : "light");
+    if (taps >= 5) {
+      taps = 0;
+      onKitten?.();
+      return;
+    }
+    tapTimer = setTimeout(() => (taps = 0), 1500);
   }
-  const releaseTitle = () => clearTimeout(hold);
 
   function mealName(meal: Meal): string {
     return meal.title || meal.items.map((i) => i.name).join(", ") || "Без названия";
@@ -161,17 +177,7 @@
       <Icon name="chevron-left" size={24} />
     </button>
     <div class="heading">
-      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-      <h1
-        class="round"
-        onpointerdown={pressTitle}
-        onpointerup={releaseTitle}
-        onpointerleave={releaseTitle}
-        onpointercancel={releaseTitle}
-        oncontextmenu={(e) => onLab && e.preventDefault()}
-      >
-        {title}
-      </h1>
+      <h1 class="round">{title}</h1>
       {#if subtitle}<p class="hint">{subtitle}</p>{/if}
     </div>
     <button class="nav" onclick={() => shift(1)} disabled={isToday} aria-label="Следующий день">
@@ -262,7 +268,9 @@
     </ul>
   {:else if meals.length === 0}
     <div class="card empty">
-      <span class="mark"><Kitten size={64} blink /></span>
+      <button class="mark" class:poked={taps > 0} onclick={tapKitten} aria-label="Котик">
+        <span class="squish" bind:this={squishEl}><Kitten size={64} blink /></span>
+      </button>
       <p class="round">{isToday ? "Сегодня пока пусто" : "В этот день ничего не записано"}</p>
       <p class="hint">Сфотографируй тарелку — разберу её на продукты и посчитаю калории.</p>
     </div>
@@ -355,10 +363,6 @@
   }
 
   h1 {
-    /* Held for the lab: no text selection or callout on a long press. */
-    -webkit-user-select: none;
-    user-select: none;
-    -webkit-touch-callout: none;
     font-size: 22px;
     font-weight: 700;
     letter-spacing: -0.01em;
@@ -619,6 +623,16 @@
   .mark {
     display: inline-block;
     color: var(--hint);
+    border-radius: 50%;
+  }
+
+  .squish {
+    display: block;
+  }
+
+  /* Tapped: the kitten warms toward the accent until the taps time out. */
+  .mark.poked {
+    color: color-mix(in oklab, var(--hint) 60%, var(--accent));
   }
 
   .state .ghost {
