@@ -69,6 +69,14 @@ export interface Water {
   goalMl: number;
 }
 
+/** Something taken every day; `taken` is for the day it was listed for. */
+export interface Supplement {
+  id: number;
+  name: string;
+  dose: string;
+  taken: boolean;
+}
+
 /** Bot messages a person opted into, on their own clock. */
 export interface Reminders {
   timeZone: string;
@@ -149,6 +157,14 @@ export const api = {
 
   water: (day: string) => request<Water>(`/api/water/${day}`),
   saveWater: (day: string, ml: number) => request<Water>(`/api/water/${day}`, json("PUT", { ml })),
+
+  supplements: (day: string) => request<Supplement[]>(`/api/supplements?day=${day}`),
+  addSupplement: (name: string, dose: string) => request<Supplement>("/api/supplements", json("POST", { name, dose })),
+  updateSupplement: (id: number, name: string, dose: string) =>
+    request<Supplement>(`/api/supplements/${id}`, json("PUT", { name, dose })),
+  deleteSupplement: (id: number) => request<void>(`/api/supplements/${id}`, { method: "DELETE" }),
+  markSupplement: (id: number, day: string, taken: boolean) =>
+    request<void>(`/api/supplements/${id}/days/${day}`, json("PUT", { taken })),
 
   reminders: () => request<Reminders>("/api/reminders"),
   saveReminders: (r: Reminders) => request<Reminders>("/api/reminders", json("PUT", r)),

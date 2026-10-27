@@ -625,6 +625,51 @@ func TestWaterIsADayTotalWithAGoalFromWeight(t *testing.T) {
 	}
 }
 
+func TestSupplementsOverHTTP(t *testing.T) {
+	h := newTestServer(t, &stubEstimator{}, Config{})
+	var sup struct {
+		ID    int64
+		Name  string
+		Dose  string
+		Taken bool
+	}
+	w := do(t, h, 7, "POST", "/api/supplements", jsonBody(t, map[string]string{"name": "Магний", "dose": "400 мг"}), "application/json")
+	_ = json.NewDecoder(w.Body).Decode(&sup)
+	if w.Code != http.StatusCreated || sup.ID == 0 || sup.Dose != "400 мг" {
+		t.Fatalf("add: %d %+v", w.Code, sup)
+	}
+	path := fmt.Sprintf("/api/supplements/%d", sup.ID)
+	if w := do(t, h, 7, "PUT", path+"/days/2026-10-27", jsonBody(t, map[string]bool{"taken": true}), "application/json"); w.Code != http.StatusNoContent {
+		t.Fatalf("mark: %d %s", w.Code, w.Body)
+	}
+	var list []struct {
+		ID    int64
+		Taken bool
+	}
+	_ = json.NewDecoder(do(t, h, 7, "GET", "/api/supplements?day=2026-10-27", nil, "").Body).Decode(&list)
+	if len(list) != 1 || !list[0].Taken {
+		t.Fatalf("list: %+v", list)
+	}
+	if w := do(t, h, 8, "PUT", path+"/days/2026-10-27", jsonBody(t, map[string]bool{"taken": false}), "application/json"); w.Code != http.StatusNotFound {
+		t.Fatalf("someone else's mark: %d", w.Code)
+	}
+	if w := do(t, h, 8, "DELETE", path, nil, ""); w.Code != http.StatusNotFound {
+		t.Fatalf("someone else's delete: %d", w.Code)
+	}
+	if w := do(t, h, 7, "PUT", path+"/days/today", jsonBody(t, map[string]bool{"taken": true}), "application/json"); w.Code != http.StatusBadRequest {
+		t.Errorf("bad day: %d", w.Code)
+	}
+	if w := do(t, h, 7, "GET", "/api/supplements", nil, ""); w.Code != http.StatusBadRequest {
+		t.Errorf("no day: %d", w.Code)
+	}
+	if w := do(t, h, 7, "POST", "/api/supplements", jsonBody(t, map[string]string{"name": ""}), "application/json"); w.Code != http.StatusBadRequest {
+		t.Errorf("empty name: %d", w.Code)
+	}
+	if w := do(t, h, 7, "DELETE", path, nil, ""); w.Code != http.StatusNoContent {
+		t.Fatalf("delete: %d", w.Code)
+	}
+}
+
 func TestLargePhotoFallsBackToThePreview(t *testing.T) {
 	h := newTestServer(t, &stubEstimator{}, Config{})
 	jpeg := []byte("\xff\xd8\xff\xe0 only a preview")

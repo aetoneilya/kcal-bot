@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -349,5 +350,67 @@ func TestWeightsFollowIntoTheProfile(t *testing.T) {
 	}
 	if _, err := st.SaveWeight(ctx, 2, model.Weight{Day: "2026-10-21", WeightKg: 70}); err != nil {
 		t.Fatalf("a weigh-in without a profile is fine: %v", err)
+	}
+}
+
+func TestSupplementsAreMarkedPerDay(t *testing.T) {
+	st := openTest(t)
+	ctx := context.Background()
+	d3, err := st.AddSupplement(ctx, 1, model.Supplement{Name: "  Витамин D3 ", Dose: "2000 МЕ"})
+	if err != nil || d3.Name != "Витамин D3" {
+		t.Fatalf("add: %+v %v", d3, err)
+	}
+	omega, _ := st.AddSupplement(ctx, 1, model.Supplement{Name: "Омега-3"})
+	if err := st.MarkSupplement(ctx, 1, d3.ID, "2026-10-27", true); err != nil {
+		t.Fatal(err)
+	}
+	// Marking twice is the same as once.
+	if err := st.MarkSupplement(ctx, 1, d3.ID, "2026-10-27", true); err != nil {
+		t.Fatal(err)
+	}
+	list, _ := st.Supplements(ctx, 1, "2026-10-27")
+	if len(list) != 2 || list[0].ID != d3.ID || !list[0].Taken || list[1].ID != omega.ID || list[1].Taken {
+		t.Fatalf("day: %+v", list)
+	}
+	if list, _ := st.Supplements(ctx, 1, "2026-10-26"); list[0].Taken {
+		t.Fatal("a mark leaked into another day")
+	}
+	if list, _ := st.Supplements(ctx, 2, "2026-10-27"); len(list) != 0 {
+		t.Fatal("someone else sees the list")
+	}
+	if err := st.MarkSupplement(ctx, 2, d3.ID, "2026-10-27", false); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("someone else unmarked it: %v", err)
+	}
+	if _, err := st.UpdateSupplement(ctx, 2, model.Supplement{ID: d3.ID, Name: "x"}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("someone else renamed it: %v", err)
+	}
+	if _, err := st.UpdateSupplement(ctx, 1, model.Supplement{ID: d3.ID, Name: "D3", Dose: "4000 МЕ"}); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ := st.Supplements(ctx, 1, "2026-10-27"); list[0].Name != "D3" || !list[0].Taken {
+		t.Fatalf("rename lost the day: %+v", list[0])
+	}
+	if err := st.MarkSupplement(ctx, 1, d3.ID, "2026-10-27", false); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ := st.Supplements(ctx, 1, "2026-10-27"); list[0].Taken {
+		t.Fatal("unmark did not stick")
+	}
+	_ = st.MarkSupplement(ctx, 1, omega.ID, "2026-10-27", true)
+	if err := st.DeleteSupplement(ctx, 1, omega.ID); err != nil {
+		t.Fatal(err)
+	}
+	var left int
+	_ = st.db.QueryRow(`SELECT count(*) FROM supplement_days WHERE supplement_id = ?`, omega.ID).Scan(&left)
+	if left != 0 {
+		t.Fatal("days outlived their supplement")
+	}
+	if err := st.DeleteSupplement(ctx, 1, omega.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("second delete: %v", err)
+	}
+	for _, bad := range []model.Supplement{{Name: " "}, {Name: strings.Repeat("я", 61)}, {Name: "a\nb"}, {Name: "ok", Dose: strings.Repeat("1", 41)}} {
+		if _, err := st.AddSupplement(ctx, 1, bad); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%q accepted: %v", bad.Name, err)
+		}
 	}
 }

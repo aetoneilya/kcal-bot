@@ -125,6 +125,11 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("DELETE /api/weights/{day}", s.handleDeleteWeight)
 	api.HandleFunc("GET /api/water/{day}", s.handleGetWater)
 	api.HandleFunc("PUT /api/water/{day}", s.handleSaveWater)
+	api.HandleFunc("GET /api/supplements", s.handleListSupplements)
+	api.HandleFunc("POST /api/supplements", s.handleAddSupplement)
+	api.HandleFunc("PUT /api/supplements/{id}", s.handleUpdateSupplement)
+	api.HandleFunc("DELETE /api/supplements/{id}", s.handleDeleteSupplement)
+	api.HandleFunc("PUT /api/supplements/{id}/days/{day}", s.handleMarkSupplement)
 	api.HandleFunc("POST /api/analyze", s.handleAnalyze)
 	api.HandleFunc("GET /api/meals", s.handleListMeals)
 	api.HandleFunc("GET /api/meals/regular", s.handleRegularMeals)
@@ -344,6 +349,100 @@ func (s *Server) waterGoal(ctx context.Context, userID int64) int {
 		return model.WaterGoalMl(nil, time.Now())
 	}
 	return model.WaterGoalMl(&profile, time.Now())
+}
+
+// handleListSupplements takes day as YYYY-MM-DD and marks what was taken then.
+func (s *Server) handleListSupplements(w http.ResponseWriter, r *http.Request) {
+	day := r.URL.Query().Get("day")
+	if err := model.ValidateDay(day); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	list, err := s.st.Supplements(r.Context(), userFrom(r.Context()).ID, day)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+type supplementRequest struct {
+	Name string `json:"name"`
+	Dose string `json:"dose"`
+}
+
+func (s *Server) handleAddSupplement(w http.ResponseWriter, r *http.Request) {
+	var body supplementRequest
+	if !decodeSupplement(w, r, &body) {
+		return
+	}
+	saved, err := s.st.AddSupplement(r.Context(), userFrom(r.Context()).ID, model.Supplement{Name: body.Name, Dose: body.Dose})
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, saved)
+}
+
+func (s *Server) handleUpdateSupplement(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	var body supplementRequest
+	if !decodeSupplement(w, r, &body) {
+		return
+	}
+	saved, err := s.st.UpdateSupplement(r.Context(), userFrom(r.Context()).ID, model.Supplement{ID: id, Name: body.Name, Dose: body.Dose})
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, saved)
+}
+
+func decodeSupplement(w http.ResponseWriter, r *http.Request, body *supplementRequest) bool {
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxJSON))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(body); err != nil {
+		writeError(w, http.StatusBadRequest, "request body is not a valid supplement")
+		return false
+	}
+	return true
+}
+
+func (s *Server) handleDeleteSupplement(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	if err := s.st.DeleteSupplement(r.Context(), userFrom(r.Context()).ID, id); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleMarkSupplement sets whether a supplement was taken on a day.
+func (s *Server) handleMarkSupplement(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Taken bool `json:"taken"`
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxJSON))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "request body is not a valid mark")
+		return
+	}
+	if err := s.st.MarkSupplement(r.Context(), userFrom(r.Context()).ID, id, r.PathValue("day"), body.Taken); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleSaveWeight(w http.ResponseWriter, r *http.Request) {
@@ -599,7 +698,7 @@ func (s *Server) handleCreateMeal(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleMealPhoto(w http.ResponseWriter, r *http.Request) {
-	id, ok := mealID(w, r)
+	id, ok := pathID(w, r)
 	if !ok {
 		return
 	}
@@ -615,7 +714,7 @@ func (s *Server) handleMealPhoto(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUpdateMeal(w http.ResponseWriter, r *http.Request) {
-	id, ok := mealID(w, r)
+	id, ok := pathID(w, r)
 	if !ok {
 		return
 	}
@@ -632,7 +731,7 @@ func (s *Server) handleUpdateMeal(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteMeal(w http.ResponseWriter, r *http.Request) {
-	id, ok := mealID(w, r)
+	id, ok := pathID(w, r)
 	if !ok {
 		return
 	}
@@ -643,7 +742,8 @@ func (s *Server) handleDeleteMeal(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func mealID(w http.ResponseWriter, r *http.Request) (int64, bool) {
+// pathID reads the {id} in the path.
+func pathID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil || id <= 0 {
 		writeError(w, http.StatusNotFound, "not found")

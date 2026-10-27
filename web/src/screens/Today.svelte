@@ -10,6 +10,7 @@
   import Kitten from "../components/Kitten.svelte";
   import MealThumb from "../components/MealThumb.svelte";
   import WaterCard from "../components/WaterCard.svelte";
+  import SupplementsCard from "../components/SupplementsCard.svelte";
   import CountUp from "../components/CountUp.svelte";
   import MacroTiles from "../components/MacroTiles.svelte";
 
@@ -244,6 +245,7 @@
   </section>
 
   <WaterCard {day} />
+  <SupplementsCard {day} />
 
   <h2 class="section-title">
     <span>Приёмы пищи</span>

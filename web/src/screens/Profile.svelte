@@ -5,6 +5,7 @@
   import { kcal as fmtKcal } from "../lib/nutrition";
   import { haptic, hapticSuccess } from "../lib/telegram";
   import WeightLog from "../components/WeightLog.svelte";
+  import SupplementList from "../components/SupplementList.svelte";
   import ActivityPicker from "../components/ActivityPicker.svelte";
 
   let {
@@ -237,6 +238,8 @@
       onWeighed();
     }}
   />
+
+  <SupplementList />
 </div>
 
 <style>

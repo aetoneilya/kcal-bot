@@ -245,7 +245,6 @@ func (s *Store) SaveWeight(ctx context.Context, userID int64, w model.Weight) (m
 	return w, tx.Commit()
 }
 
-// DeleteWeight removes a weigh-in; the profile falls back to the newest left.
 // SaveWater sets a day's water total.
 func (s *Store) SaveWater(ctx context.Context, userID int64, w model.Water) (model.Water, error) {
 	if err := model.ValidateWater(w); err != nil {
@@ -280,6 +279,7 @@ func (s *Store) Water(ctx context.Context, userID int64, from, to string) ([]mod
 	return days, rows.Err()
 }
 
+// DeleteWeight removes a weigh-in; the profile falls back to the newest left.
 func (s *Store) DeleteWeight(ctx context.Context, userID int64, day string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -332,6 +332,115 @@ func (s *Store) Weights(ctx context.Context, userID int64, from, to string) ([]m
 		weights = append(weights, w)
 	}
 	return weights, rows.Err()
+}
+
+// --- supplements --------------------------------------------------------------
+
+// Supplements lists a person's supplements in the order they were added,
+// each marked with whether it was taken on day.
+func (s *Store) Supplements(ctx context.Context, userID int64, day string) ([]model.Supplement, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT s.id, s.name, s.dose, d.day IS NOT NULL
+		FROM supplements s LEFT JOIN supplement_days d ON d.supplement_id = s.id AND d.day = ?
+		WHERE s.user_id = ? ORDER BY s.id`, day, userID)
+	if err != nil {
+		return nil, fmt.Errorf("query supplements: %w", err)
+	}
+	defer rows.Close()
+	list := []model.Supplement{}
+	for rows.Next() {
+		var sup model.Supplement
+		if err := rows.Scan(&sup.ID, &sup.Name, &sup.Dose, &sup.Taken); err != nil {
+			return nil, err
+		}
+		list = append(list, sup)
+	}
+	return list, rows.Err()
+}
+
+// AddSupplement appends one to the person's list.
+func (s *Store) AddSupplement(ctx context.Context, userID int64, sup model.Supplement) (model.Supplement, error) {
+	sup = sup.Normalize()
+	sup.Taken = false
+	if err := model.ValidateSupplement(sup); err != nil {
+		return model.Supplement{}, err
+	}
+	var count int
+	if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM supplements WHERE user_id = ?`, userID).Scan(&count); err != nil {
+		return model.Supplement{}, err
+	}
+	if count >= model.MaxSupplements {
+		return model.Supplement{}, fmt.Errorf("%w: at most %d supplements", ErrInvalid, model.MaxSupplements)
+	}
+	result, err := s.db.ExecContext(ctx, `INSERT INTO supplements (user_id, name, dose, created_at) VALUES (?, ?, ?, ?)`,
+		userID, sup.Name, sup.Dose, s.now().Unix())
+	if err != nil {
+		return model.Supplement{}, fmt.Errorf("add supplement: %w", err)
+	}
+	sup.ID, err = result.LastInsertId()
+	return sup, err
+}
+
+// UpdateSupplement renames one or changes its dose; its days stay.
+func (s *Store) UpdateSupplement(ctx context.Context, userID int64, sup model.Supplement) (model.Supplement, error) {
+	sup = sup.Normalize()
+	if err := model.ValidateSupplement(sup); err != nil {
+		return model.Supplement{}, err
+	}
+	result, err := s.db.ExecContext(ctx, `UPDATE supplements SET name = ?, dose = ? WHERE id = ? AND user_id = ?`,
+		sup.Name, sup.Dose, sup.ID, userID)
+	if err != nil {
+		return model.Supplement{}, fmt.Errorf("update supplement: %w", err)
+	}
+	if n, _ := result.RowsAffected(); n == 0 {
+		return model.Supplement{}, ErrNotFound
+	}
+	sup.Taken = false
+	return sup, nil
+}
+
+// DeleteSupplement removes one and the days it was taken.
+func (s *Store) DeleteSupplement(ctx context.Context, userID, id int64) error {
+	result, err := s.db.ExecContext(ctx, `DELETE FROM supplements WHERE id = ? AND user_id = ?`, id, userID)
+	if err != nil {
+		return fmt.Errorf("delete supplement: %w", err)
+	}
+	if n, _ := result.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// MarkSupplement records whether a supplement was taken on a day.
+func (s *Store) MarkSupplement(ctx context.Context, userID, id int64, day string, taken bool) error {
+	if err := model.ValidateDay(day); err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var owner int64
+	err = tx.QueryRowContext(ctx, `SELECT user_id FROM supplements WHERE id = ?`, id).Scan(&owner)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	} else if err != nil {
+		return err
+	} else if owner != userID {
+		return ErrNotFound
+	}
+	if taken {
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO supplement_days (supplement_id, day, taken_at) VALUES (?, ?, ?)
+			ON CONFLICT (supplement_id, day) DO NOTHING`, id, day, s.now().Unix())
+	} else {
+		_, err = tx.ExecContext(ctx, `DELETE FROM supplement_days WHERE supplement_id = ? AND day = ?`, id, day)
+	}
+	if err != nil {
+		return fmt.Errorf("mark supplement: %w", err)
+	}
+	return tx.Commit()
 }
 
 // --- daily allowance ------------------------------------------------------
