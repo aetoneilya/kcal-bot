@@ -59,7 +59,7 @@
 {#if list.length}
   <section class="card supplements" aria-labelledby="supplements-title">
     <h2 id="supplements-title">
-      <span>Бады</span>
+      <span>Каждый день</span>
       <span class="num" class:done={taken === list.length}>{taken} из {list.length}</span>
     </h2>
     <ul>

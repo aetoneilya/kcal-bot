@@ -78,7 +78,7 @@
 </script>
 
 <section class="supplements" aria-labelledby="supplements-title">
-  <h2 id="supplements-title" class="round">Бады</h2>
+  <h2 id="supplements-title" class="round">Каждый день</h2>
 
   {#if list.length}
     <ul class="group">
@@ -115,7 +115,7 @@
   {#if error}<p class="error">{error}</p>{/if}
   {#if loaded}
     <p class="foot">
-      {list.length ? "Отмечай в дневнике под водой — по галочке в день." : "Добавь то, что пьёшь каждый день, — в дневнике появятся галочки."}
+      {list.length ? "Отмечай в дневнике под водой — по галочке в день." : "Витамины, добавки, лекарства — всё, что принимаешь ежедневно. В дневнике появятся галочки."}
     </p>
   {/if}
 </section>
