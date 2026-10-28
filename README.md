@@ -34,7 +34,8 @@ Both real backends use the same prompt and JSON schema (`api/internal/estimate`)
 - **Barcode** — a photo of the barcode is decoded in the browser and looked up in Open Food Facts; no model call.
 - **Ещё раз** — meals eaten in the last 60 days, grouped by their foods, most frequent first; a tap copies one.
 - **Норма** — sex, birth year, height, weight, goal weight, activity and pace give a daily target (Mifflin–St Jeor with guard rails: a deficit of at most a quarter, a floor of 1200/1500 kcal). The formula lives in `web/src/lib/targets.ts` and, for the bot, in `api/internal/model/targets.go`; their tests pin the same numbers.
-- **Вода** — a glass (250 ml) at a time toward a day's goal of 0.8 ml per kcal the profile spends (about 1 ml/kcal of total water, the basis EFSA 2010 and the US National Academies use, less the fifth that food brings), within 1.5–3.5 l, 2 l without a profile; the weekly summary carries the average.
+- **Вода** — a glass (250 ml) at a time, or any amount by sliding a finger along the bar, toward a day's goal of 0.8 ml per kcal the profile spends (about 1 ml/kcal of total water, the basis EFSA 2010 and the US National Academies use, less the fifth that food brings), within 1.5–3.5 l, 2 l without a profile; the weekly summary carries the average.
+- **Каждый день** — supplements, vitamins, medicines: a list with free-text doses in **Норма**, a tick per item per day in the diary; the card folds into one line once everything is ticked.
 - **Вес** — one weigh-in a day with a chart; the newest becomes the profile's weight, so the target follows the scale.
 - **Календарь** — each finished day against the target its weight called for: short, on target (±10%), over.
 - **Bot messages** — opt-in, on the phone's time zone: a Sunday summary of the week (days logged, average against the target, weight trend) closed by a few warm lines and one healthy habit to try, written by Claude (`api/internal/coach`, `kcal-bot -coach` prints a sample) or a fixed tip without a key; and a midday nudge when nothing is logged.
@@ -106,6 +107,8 @@ All routes but health need the `X-Telegram-Init-Data` header.
 | `PUT /api/profile` | Save the profile |
 | `GET /api/weights?from=&to=` · `PUT /api/weights/{day}` · `DELETE /api/weights/{day}` | Weigh-ins by local day, `YYYY-MM-DD` |
 | `GET /api/water/{day}` · `PUT /api/water/{day}` | A day's water total in ml, with the goal |
+| `GET /api/supplements?day=` · `POST /api/supplements` · `PUT /api/supplements/{id}` · `DELETE /api/supplements/{id}` | The daily list, each marked `taken` for that day |
+| `PUT /api/supplements/{id}/days/{day}` | `{"taken": bool}` for one day |
 | `GET /api/reminders` · `PUT /api/reminders` | Bot message settings |
 | `GET /api/treats` | Compliments and the cat list; 404 for anyone not in `TREAT_USERS` |
 | `GET /api/cats` · `GET /api/cats/{name}` | The dancing cats, for anyone |
