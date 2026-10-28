@@ -18,6 +18,7 @@ interface TelegramWebApp {
   HapticFeedback?: {
     impactOccurred(style: HapticStyle): void;
     notificationOccurred(type: "error" | "success" | "warning"): void;
+    selectionChanged(): void;
   };
   BackButton?: {
     show(): void;
@@ -57,6 +58,11 @@ export function initData(): string {
 
 export function haptic(style: HapticStyle = "light"): void {
   tg?.HapticFeedback?.impactOccurred(style);
+}
+
+/** The light click of a picker wheel moving by one step. */
+export function hapticTick(): void {
+  tg?.HapticFeedback?.selectionChanged();
 }
 
 export function hapticSuccess(): void {
