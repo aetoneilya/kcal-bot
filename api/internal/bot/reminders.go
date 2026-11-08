@@ -211,18 +211,22 @@ func (r *Reminders) motivate(ctx context.Context, user model.User, week coach.We
 	if r.Coach == nil {
 		return coach.Fallback(week)
 	}
-	text, cost, err := r.Coach.Motivate(ctx, week)
-	if cost > 0 {
-		if _, spendErr := r.Store.AddSpend(ctx, user.ID, cost); spendErr != nil {
+	started := time.Now()
+	result, err := r.Coach.Motivate(ctx, week)
+	attrs := []any{"user", user.ID, "ms", time.Since(started).Milliseconds(), "usd", fmt.Sprintf("%.4f", result.Cost),
+		"tokens_in", result.Usage.Input, "tokens_out", result.Usage.Output,
+		"tokens_cache_read", result.Usage.CacheRead, "tokens_cache_write", result.Usage.CacheWrite, "tokens_reasoning", result.Usage.Reasoning}
+	if result.Cost > 0 {
+		if _, spendErr := r.Store.AddSpend(ctx, user.ID, result.Cost); spendErr != nil {
 			r.log().Warn("could not record coach spend", "user", user.ID, "err", spendErr)
 		}
 	}
 	if err != nil {
-		r.log().Warn("coach failed, using a fixed tip", "user", user.ID, "err", err)
+		r.log().Warn("coach failed, using a fixed tip", append(attrs, "err", err)...)
 		return coach.Fallback(week)
 	}
-	r.log().Info("coached", "user", user.ID, "usd", fmt.Sprintf("%.4f", cost))
-	return text
+	r.log().Info("coached", attrs...)
+	return result.Text
 }
 
 func kg(v float64) string {

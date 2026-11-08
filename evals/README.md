@@ -1,7 +1,7 @@
 # Weighed meals
 
 Ground truth for `kcal-bot -eval evals`: one directory per meal, with one to
-three photos and a `truth.json` that says what the kitchen scale said.
+five photos and a `truth.json` that says what the kitchen scale said.
 
 ```
 evals/2026-10-22-buckwheat-chicken/

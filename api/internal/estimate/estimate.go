@@ -20,7 +20,7 @@ import (
 
 // MaxPhotos is how many photos one meal may carry: the plate, another angle,
 // the packaging with its label.
-const MaxPhotos = 3
+const MaxPhotos = 5
 
 // Photo is one uploaded image, already checked to be JPEG, PNG or WebP.
 type Photo struct {
@@ -185,7 +185,7 @@ func userText(in Input) string {
 	return b.String()
 }
 
-// draftSchemaJSON is the JSON Schema both backends constrain output to.
+// draftSchemaJSON is the JSON Schema all backends constrain output to.
 // Structured outputs need additionalProperties: false and every property
 // required.
 //

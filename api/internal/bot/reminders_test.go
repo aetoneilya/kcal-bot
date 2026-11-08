@@ -1,19 +1,24 @@
 package bot
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
+	"log/slog"
 	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/aetoneilya/kcal-bot/api/internal/coach"
+	"github.com/aetoneilya/kcal-bot/api/internal/estimate"
 	"github.com/aetoneilya/kcal-bot/api/internal/model"
 	"github.com/aetoneilya/kcal-bot/api/internal/store"
 	"github.com/aetoneilya/kcal-bot/api/internal/telegram"
@@ -113,6 +118,54 @@ func TestRemindersGoOutOnTheirLocalClockOnce(t *testing.T) {
 	}
 }
 
+type billingCoach struct{ err error }
+
+func (c billingCoach) Motivate(context.Context, coach.Week) (coach.Result, error) {
+	return coach.Result{Text: "Совет", Cost: 0.002, Usage: estimate.Usage{Input: 200, CacheRead: 1000, Output: 500, Reasoning: 300}}, c.err
+}
+
+func TestCoachUsageIsLoggedAndBilledBeforeFallback(t *testing.T) {
+	for _, fail := range []bool{false, true} {
+		t.Run(strconv.FormatBool(fail), func(t *testing.T) {
+			ctx := context.Background()
+			st, err := store.Open(filepath.Join(t.TempDir(), "kcal.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = st.Close() })
+			user := model.User{ID: 1}
+			if _, err := st.EnsureUser(ctx, user); err != nil {
+				t.Fatal(err)
+			}
+			var logs bytes.Buffer
+			c := billingCoach{}
+			if fail {
+				c.err = errors.New("model refused")
+			}
+			r := &Reminders{Store: st, Coach: c, Log: slog.New(slog.NewJSONHandler(&logs, nil))}
+			week := coach.Week{Logged: 5}
+			text := r.motivate(ctx, user, week)
+			want := "Совет"
+			if fail {
+				want = coach.Fallback(week)
+			}
+			if text != want {
+				t.Fatalf("text=%q, want %q", text, want)
+			}
+			if spent, err := st.SpentToday(ctx, user.ID); err != nil || spent != 0.002 {
+				t.Fatalf("spent=%v, err=%v", spent, err)
+			}
+			var entry map[string]any
+			if err := json.Unmarshal(bytes.TrimSpace(logs.Bytes()), &entry); err != nil {
+				t.Fatal(err)
+			}
+			if entry["tokens_cache_read"] != float64(1000) || entry["tokens_reasoning"] != float64(300) || entry["tokens_out"] != float64(500) || entry["usd"] != "0.0020" {
+				t.Fatalf("billing details missing: %v", entry)
+			}
+		})
+	}
+}
+
 func TestRemindersCarryAComplimentForChosenPeople(t *testing.T) {
 	ctx := context.Background()
 	st, err := store.Open(filepath.Join(t.TempDir(), "kcal.db"))
@@ -163,9 +216,9 @@ func TestRemindersCarryAComplimentForChosenPeople(t *testing.T) {
 // fixedCoach stands in for the model.
 type fixedCoach struct{ got []coach.Week }
 
-func (c *fixedCoach) Motivate(_ context.Context, w coach.Week) (string, float64, error) {
+func (c *fixedCoach) Motivate(_ context.Context, w coach.Week) (coach.Result, error) {
 	c.got = append(c.got, w)
-	return "Ты молодец!", 0.002, nil
+	return coach.Result{Text: "Ты молодец!", Cost: 0.002}, nil
 }
 
 func TestWeeklySummaryAsksTheCoachAndCountsItsCost(t *testing.T) {

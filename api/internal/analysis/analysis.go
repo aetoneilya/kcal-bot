@@ -107,22 +107,22 @@ func (a *Analyzer) Analyze(ctx context.Context, user model.User, in estimate.Inp
 	started := time.Now()
 	result, err := a.Estimator.Estimate(ctx, in)
 	a.recordSpend(ctx, log, user, spent, totalBefore, result.Cost)
+	attrs := []any{"estimator", a.Estimator.Name(), "user", user.ID, "ms", time.Since(started).Milliseconds(),
+		"usd", fmt.Sprintf("%.4f", result.Cost), "tokens_in", result.Usage.Input, "tokens_out", result.Usage.Output,
+		"tokens_cache_read", result.Usage.CacheRead, "tokens_cache_write", result.Usage.CacheWrite, "tokens_reasoning", result.Usage.Reasoning}
 	if err != nil {
 		// A failure on our side (or the model's) should not eat the allowance.
 		if refundErr := a.Store.RefundAnalysis(ctx, user.ID); refundErr != nil {
 			log.Error("could not refund analysis", "user", user.ID, "err", refundErr)
 		}
-		log.Error("estimate failed", "estimator", a.Estimator.Name(), "user", user.ID, "ms", time.Since(started).Milliseconds(), "err", err)
+		log.Error("estimate failed", append(attrs, "err", err)...)
 		if errors.Is(err, estimate.ErrUnusable) {
 			return model.Draft{}, err
 		}
 		return model.Draft{}, fmt.Errorf("%w: %v", ErrModel, err)
 	}
 	draft := result.Draft
-	log.Info("estimated", "estimator", a.Estimator.Name(), "user", user.ID,
-		"items", len(draft.Items), "photos", len(in.Photos), "ms", time.Since(started).Milliseconds(),
-		"usd", fmt.Sprintf("%.4f", result.Cost), "tokens_in", result.Usage.Input, "tokens_out", result.Usage.Output,
-		"history", len(in.History))
+	log.Info("estimated", append(attrs, "items", len(draft.Items), "photos", len(in.Photos), "history", len(in.History))...)
 	if len(draft.Items) == 0 {
 		// An empty plate is either a non-food photo or a model misfire; the
 		// answer text tells which. It holds no personal data beyond the meal.

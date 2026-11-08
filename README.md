@@ -17,20 +17,23 @@ Studies of LLM calorie estimation agree: models recognise food well and misjudge
 
 ## Model backends
 
-`ESTIMATOR` picks one; with it unset, whichever key is present wins (Gemini first).
+`ESTIMATOR` picks one; with it unset, the first key present wins: Gemini, Claude, then OpenAI.
 
 | Backend | Env | Default model | Notes |
 |---|---|---|---|
 | `gemini` | `GEMINI_API_KEY`, `GEMINI_MODEL` | `gemini-3.5-flash` | Best portion error and price in 2026 benchmarks. Free tier exists, but Google trains on free-tier data. |
 | `claude` | `ANTHROPIC_API_KEY`, `CLAUDE_MODEL`, `CLAUDE_EFFORT` | `claude-sonnet-5-5`, effort `medium` | Structured outputs guarantee the JSON shape. Effort is the main cost knob. |
+| `openai` | `OPENAI_TOKEN` (or `OPENAI_API_KEY`), `OPENAI_MODEL` | `gpt-5.4-mini`, effort `medium` for meals, `low` for the coach | Responses API with images and strict structured outputs. Responses are sent with `store=false`. |
 | `fake` | — | — | Fixed plate after 1.5 s. Default under `-dev` with no key; elsewhere only when `ESTIMATOR=fake` is set explicitly. |
 
-Both real backends use the same prompt and JSON schema (`api/internal/estimate`). Rough cost: ~$0.01 per photo, $1.5–3 per person per month at five meals a day. Neither API is reachable from Russia, so the server must run abroad.
+All real backends use the same prompt and JSON schema (`api/internal/estimate`). Cost depends on the model and its reasoning tokens; the app tracks Claude and OpenAI spend for models priced in `cost.go`. The APIs are not available from Russia, so the server must run abroad.
+
+To use only OpenAI when other keys are also set, export `ESTIMATOR=openai` alongside `OPENAI_TOKEN` in the environment that starts the API (or pass them through Docker Compose). This selects OpenAI for both meal analysis and the weekly coach, even if an Anthropic key is present. `OPENAI_TOKEN` takes precedence over `OPENAI_API_KEY`. Custom models must support Responses, images, structured outputs and reasoning efforts `medium` and `low`. The default model and its dated snapshot are priced; models without an entry in `cost.go` cannot have their spend capped. The default model's rates are from the [official OpenAI documentation](https://developers.openai.com/api/docs/models/gpt-5.4-mini). Analysis and coach logs include latency, cost, input/output, cached and reasoning tokens, including on billed failures; reasoning is already included in output tokens and is not charged twice.
 
 ## Beyond the photo
 
-- **Several photos per meal** — the plate and its label together; up to three.
-- **Photo or text in the chat** — a photo (an album of up to three), or any text that is not a command ("овсянка 200 г с бананом"), sent to the bot gets the same estimate, within the same limits (`api/internal/analysis`), answered with the breakdown, buttons for the model's question, and Save / Cancel. Drafts wait in memory; a restart forgets them.
+- **Several photos per meal** — the plate and its label together; up to five.
+- **Photo or text in the chat** — a photo (an album of up to five), or any text that is not a command ("овсянка 200 г с бананом"), sent to the bot gets the same estimate, within the same limits (`api/internal/analysis`), answered with the breakdown, buttons for the model's question, and Save / Cancel. Drafts wait in memory; a restart forgets them.
 - **Barcode** — a photo of the barcode is decoded in the browser and looked up in Open Food Facts; no model call.
 - **Ещё раз** — meals eaten in the last 60 days, grouped by their foods, most frequent first; a tap copies one.
 - **Норма** — sex, birth year, height, weight, goal weight, activity and pace give a daily target (Mifflin–St Jeor with guard rails: a deficit of at most a quarter, a floor of 1200/1500 kcal). The formula lives in `web/src/lib/targets.ts` and, for the bot, in `api/internal/model/targets.go`; their tests pin the same numbers.
@@ -38,7 +41,7 @@ Both real backends use the same prompt and JSON schema (`api/internal/estimate`)
 - **Каждый день** — supplements, vitamins, medicines: a list with free-text doses in **Норма**, a tick per item per day in the diary; the card folds into one line once everything is ticked.
 - **Вес** — one weigh-in a day with a chart; the newest becomes the profile's weight, so the target follows the scale.
 - **Календарь** — each finished day against the target its weight called for: short, on target (±10%), over.
-- **Bot messages** — opt-in, on the phone's time zone: a Sunday summary of the week (days logged, average against the target, weight trend) closed by a few warm lines and one healthy habit to try, written by Claude (`api/internal/coach`, `kcal-bot -coach` prints a sample) or a fixed tip without a key; and a midday nudge when nothing is logged.
+- **Bot messages** — opt-in, on the phone's time zone: a Sunday summary of the week (days logged, average against the target, weight trend) closed by a few warm lines and one healthy habit to try, written by OpenAI when selected or Claude otherwise (`api/internal/coach`, `kcal-bot -coach` prints a sample), or a fixed tip without a key; and a midday nudge when nothing is logged.
 - **Previews** — the first photo of a meal is kept as a 320 px JPEG (~20 KB) and shown in the diary; from the chat it is Telegram's own small size.
 - **Your portions** — the last 60 days of saved items go into the prompt as the person's usual weights.
 - **Treats** — dancing cats for anyone: tap the empty day's kitten five times. For the people in `TREAT_USERS` also a compliment of the day in the diary, a cat with a compliment after each new meal and on a «Котик» button, and a compliment in the bot's messages. Compliments and videos sit in `TREATS_DIR` on the server, outside git (`api/internal/treats`); `scripts/push-treats.sh` copies a local `treats/` there.
@@ -61,7 +64,7 @@ npm --prefix web install
 npm --prefix web run dev      # Mini App on :5173, proxies /api to :8080
 ```
 
-Export `GEMINI_API_KEY` or `ANTHROPIC_API_KEY` before `make dev` to try a real model. `-dev` disables Telegram auth and attributes everything to one local user; without it the server refuses to start unless `BOT_TOKEN` is set.
+Export `GEMINI_API_KEY`, `ANTHROPIC_API_KEY` or `OPENAI_TOKEN` before `make dev` to try a real model. `-dev` disables Telegram auth and attributes everything to one local user; without it the server refuses to start unless `BOT_TOKEN` is set.
 
 On this machine npm's global registry points at a corporate Nexus, so `web/.npmrc` pins the public registry; behind the corporate proxy run npm and `go get` under `env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy`.
 
@@ -98,7 +101,7 @@ All routes but health need the `X-Telegram-Init-Data` header.
 |---|---|
 | `GET /api/health` | Readiness, pings the database |
 | `GET /api/me` | User, estimator name, analyses left today, profile |
-| `POST /api/analyze` | Multipart: up to three `photo`, `note`, and `question` + `answer` for a re-estimate → draft (nothing saved) |
+| `POST /api/analyze` | Multipart: up to five `photo`, `note`, and `question` + `answer` for a re-estimate → draft (nothing saved) |
 | `GET /api/barcode/{code}` | Open Food Facts lookup → one-line draft |
 | `GET /api/meals?from=&to=` | Meals in `[from, to)`, unix seconds — the client's local day |
 | `GET /api/meals/regular` | Meals worth repeating, most frequent first |

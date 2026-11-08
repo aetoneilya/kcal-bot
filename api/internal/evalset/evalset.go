@@ -4,7 +4,7 @@
 //
 //	evals/
 //	  2026-10-21-buckwheat/
-//	    photo.jpg          one to three photos (jpg, png or webp)
+//	    photo.jpg          one to five photos (jpg, png or webp)
 //	    truth.json         what the scale said
 //
 // truth.json:

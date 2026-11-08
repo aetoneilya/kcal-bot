@@ -36,8 +36,15 @@ type Week struct {
 
 // Coach writes the motivating part of the weekly summary.
 type Coach interface {
-	// Motivate returns the text and what it cost in USD.
-	Motivate(ctx context.Context, week Week) (string, float64, error)
+	// Motivate returns the text and billing details, including on a billed error.
+	Motivate(ctx context.Context, week Week) (Result, error)
+}
+
+// Result keeps usage available for diagnosing the weekly coach's cost.
+type Result struct {
+	Text  string
+	Cost  float64
+	Usage estimate.Usage
 }
 
 type Claude struct {
@@ -65,7 +72,7 @@ Write 2 to 4 short sentences, plain text:
 
 Never shame, moralise or frame food as good or bad. Never suggest skipping meals, fasting, detoxes, or eating below the target. If the average intake is far below the target, gently say that eating enough matters too. No medical advice; for anything medical, suggest a doctor.`
 
-func (c *Claude) Motivate(ctx context.Context, week Week) (string, float64, error) {
+func (c *Claude) Motivate(ctx context.Context, week Week) (Result, error) {
 	response, err := c.client.Messages.New(ctx, anthropic.MessageNewParams{
 		Model:        anthropic.Model(c.model),
 		MaxTokens:    1000,
@@ -74,23 +81,25 @@ func (c *Claude) Motivate(ctx context.Context, week Week) (string, float64, erro
 		OutputConfig: anthropic.OutputConfigParam{Effort: anthropic.OutputConfigEffortLow},
 	})
 	if err != nil {
-		return "", 0, fmt.Errorf("coach: %w", err)
+		return Result{}, fmt.Errorf("coach: %w", err)
 	}
-	cost := c.price.Cost(estimate.Usage{
+	usage := estimate.Usage{
 		Input:      response.Usage.InputTokens,
 		CacheWrite: response.Usage.CacheCreationInputTokens,
 		CacheRead:  response.Usage.CacheReadInputTokens,
 		Output:     response.Usage.OutputTokens,
-	})
+	}
+	result := Result{Cost: c.price.Cost(usage), Usage: usage}
 	if response.StopReason != anthropic.StopReasonEndTurn {
-		return "", cost, fmt.Errorf("coach: stopped with %s", response.StopReason)
+		return result, fmt.Errorf("coach: stopped with %s", response.StopReason)
 	}
 	for _, block := range response.Content {
 		if text, ok := block.AsAny().(anthropic.TextBlock); ok && strings.TrimSpace(text.Text) != "" {
-			return strings.TrimSpace(text.Text), cost, nil
+			result.Text = strings.TrimSpace(text.Text)
+			return result, nil
 		}
 	}
-	return "", cost, fmt.Errorf("coach: no text in the answer")
+	return result, fmt.Errorf("coach: no text in the answer")
 }
 
 // describe is the week as the model reads it.

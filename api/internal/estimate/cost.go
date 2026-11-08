@@ -3,6 +3,9 @@ package estimate
 // Usage is the tokens one model call consumed. Output includes reasoning.
 type Usage struct {
 	Input, CacheWrite, CacheRead, Output int64
+	// Reasoning is a subset of Output, never an additional billed quantity.
+	// It is zero when the backend does not report it separately.
+	Reasoning int64
 }
 
 // Price is a model's list price in USD per million tokens.
@@ -31,5 +34,19 @@ var claudePrices = map[string]Price{
 // ClaudePrice is a model's list price; false for a model not in the table.
 func ClaudePrice(model string) (Price, bool) {
 	price, ok := claudePrices[model]
+	return price, ok
+}
+
+// OpenAI list prices per million tokens, checked 2026-11-08:
+// https://developers.openai.com/api/docs/models/gpt-5.4-mini
+// Cache writes are billed as ordinary input; cached reads are discounted.
+var openaiPrices = map[string]Price{
+	"gpt-5.4-mini":            {Input: 0.75, CacheRead: 0.075, Output: 4.50},
+	"gpt-5.4-mini-2026-03-17": {Input: 0.75, CacheRead: 0.075, Output: 4.50},
+}
+
+// OpenAIPrice reports false for unknown models, whose spend cannot be capped.
+func OpenAIPrice(model string) (Price, bool) {
+	price, ok := openaiPrices[model]
 	return price, ok
 }

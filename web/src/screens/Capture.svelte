@@ -23,7 +23,7 @@
   let regulars = $state<Regular[]>([]);
 
   // One meal may carry a few photos: the plate, another angle, the label.
-  const MAX_PHOTOS = 3;
+  const MAX_PHOTOS = 5;
   let photos = $state<{ blob: Blob; url: string }[]>([]);
   let active = $state(0);
   let note = $state("");
@@ -60,6 +60,8 @@
       } catch {
         blob = file; // the server sniffs the type; let it decide
       }
+      // Another picker can finish while this file is being downscaled.
+      if (photos.length >= MAX_PHOTOS) break;
       photos.push({ blob, url: URL.createObjectURL(blob) });
     }
     active = photos.length - 1;
@@ -311,6 +313,9 @@
     display: flex;
     gap: 8px;
     margin-top: 10px;
+    overflow-x: auto;
+    padding: 2px;
+    margin-inline: -2px;
   }
 
   .thumb {
@@ -398,9 +403,15 @@
 
   .alt {
     display: flex;
+    flex-wrap: wrap;
     justify-content: center;
     gap: 8px;
     margin: 6px 0 14px;
+  }
+
+  .alt .ghost {
+    padding-inline: 8px;
+    white-space: nowrap;
   }
 
   .off {

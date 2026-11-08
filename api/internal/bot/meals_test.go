@@ -228,12 +228,16 @@ func TestAlbumIsOneMeal(t *testing.T) {
 	client, api := newPhotoAPI(t)
 	analyzer := &scriptedAnalyzer{}
 	b := &Bot{Client: client, AppURL: "https://kcal.example", Analyzer: analyzer, Meals: noMeals{}, AlbumDelay: 50 * time.Millisecond}
-	for _, caption := range []string{"", "обед", "", ""} {
+	for i := 0; i < 6; i++ {
+		caption := ""
+		if i == 1 {
+			caption = "обед"
+		}
 		b.Handle(context.Background(), photoMessage(7, 7, "album-1", caption))
 	}
 	b.Wait()
-	if len(analyzer.inputs) != 1 || len(analyzer.inputs[0].Photos) != estimate.MaxPhotos || analyzer.inputs[0].Note != "обед" {
-		t.Fatalf("want one estimate of %d photos with the caption, got %d inputs", estimate.MaxPhotos, len(analyzer.inputs))
+	if len(analyzer.inputs) != 1 || len(analyzer.inputs[0].Photos) != 5 || analyzer.inputs[0].Note != "обед" {
+		t.Fatalf("want one estimate of five photos with the caption, got %d inputs", len(analyzer.inputs))
 	}
 	if api.count("sendMessage") != 1 {
 		t.Fatalf("want one answer, got %d", api.count("sendMessage"))

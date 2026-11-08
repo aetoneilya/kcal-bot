@@ -417,13 +417,16 @@ func TestAnalyzeTakesSeveralPhotosUpToTheCap(t *testing.T) {
 		mw.Close()
 		return &buf, mw.FormDataContentType()
 	}
-	body, ct := form(3)
-	if w := do(t, h, 7, "POST", "/api/analyze", body, ct); w.Code != http.StatusOK || len(est.last.Photos) != 3 {
-		t.Fatalf("three photos: %d, estimator got %d", w.Code, len(est.last.Photos))
+	body, ct := form(5)
+	if w := do(t, h, 7, "POST", "/api/analyze", body, ct); w.Code != http.StatusOK || len(est.last.Photos) != 5 {
+		t.Fatalf("five photos: %d, estimator got %d", w.Code, len(est.last.Photos))
 	}
-	body, ct = form(4)
+	body, ct = form(6)
 	if w := do(t, h, 7, "POST", "/api/analyze", body, ct); w.Code != http.StatusBadRequest {
-		t.Fatalf("four photos must be refused, got %d", w.Code)
+		t.Fatalf("six photos must be refused, got %d", w.Code)
+	}
+	if est.calls != 1 {
+		t.Fatal("an over-limit upload must not reach the model")
 	}
 }
 

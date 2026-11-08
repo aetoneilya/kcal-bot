@@ -16,6 +16,9 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       CLAUDE_MODEL: ${CLAUDE_MODEL:-}
       CLAUDE_EFFORT: ${CLAUDE_EFFORT:-}
+      OPENAI_TOKEN: ${OPENAI_TOKEN:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
     volumes:
       - kcal-data:/data
     expose:

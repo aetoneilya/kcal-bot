@@ -8,9 +8,9 @@
 // authentication. Development mode (-dev) disables authentication and
 // attributes every request to a fixed local user.
 //
-// The estimator is picked by ESTIMATOR (gemini, claude or fake). With no
-// setting it is gemini when GEMINI_API_KEY is set, claude when
-// ANTHROPIC_API_KEY is set, and fake otherwise — fake needs no key and runs
+// The estimator is picked by ESTIMATOR (gemini, claude, openai or fake). With
+// no setting, the first key present wins: Gemini, Claude, then OpenAI.
+// With no keys it is fake — fake needs no key and runs
 // outside -dev only when ESTIMATOR=fake is set explicitly.
 package main
 
@@ -50,7 +50,7 @@ func main() {
 	staticDir := flag.String("static", os.Getenv("STATIC_DIR"), "directory with the built Mini App (web/dist) to serve at /; empty serves the API only")
 	probe := flag.String("probe", "", "estimate this photo once with the configured model, print the raw answer and cost, and exit")
 	probeNote := flag.String("note", "", "with -probe: the note to send alongside the photo")
-	coachProbe := flag.Bool("coach", false, "write one sample weekly-summary message with the configured Claude key, print it and its cost, and exit")
+	coachProbe := flag.Bool("coach", false, "write one sample weekly-summary message with the configured coach, print it and its cost, and exit")
 	evalDir := flag.String("eval", "", "run the configured model over a directory of weighed meals (see internal/evalset) and print the error report")
 	flag.Parse()
 
@@ -247,6 +247,7 @@ func main() {
 
 func newEstimator(ctx context.Context, devMode bool) (estimate.Estimator, error) {
 	geminiKey, claudeKey := os.Getenv("GEMINI_API_KEY"), os.Getenv("ANTHROPIC_API_KEY")
+	openaiKey := openAIKey()
 	kind := os.Getenv("ESTIMATOR")
 	if kind == "" {
 		switch {
@@ -254,6 +255,8 @@ func newEstimator(ctx context.Context, devMode bool) (estimate.Estimator, error)
 			kind = "gemini"
 		case claudeKey != "":
 			kind = "claude"
+		case openaiKey != "":
+			kind = "openai"
 		default:
 			kind = "fake"
 		}
@@ -269,15 +272,20 @@ func newEstimator(ctx context.Context, devMode bool) (estimate.Estimator, error)
 			return nil, errors.New("ESTIMATOR=claude needs ANTHROPIC_API_KEY")
 		}
 		return estimate.NewClaude(claudeKey, os.Getenv("CLAUDE_MODEL"), os.Getenv("CLAUDE_EFFORT")), nil
+	case "openai":
+		if openaiKey == "" {
+			return nil, errors.New("ESTIMATOR=openai needs OPENAI_TOKEN or OPENAI_API_KEY")
+		}
+		return estimate.NewOpenAI(openaiKey, os.Getenv("OPENAI_MODEL")), nil
 	case "fake":
 		// Only ever picked on purpose outside -dev: a production server that
 		// silently fell back to a fixed plate would look broken, not free.
 		if !devMode && os.Getenv("ESTIMATOR") != "fake" {
-			return nil, errors.New("no model API key is set; set GEMINI_API_KEY or ANTHROPIC_API_KEY, or ESTIMATOR=fake to try the app without a model")
+			return nil, errors.New("no model API key is set; set GEMINI_API_KEY, ANTHROPIC_API_KEY or OPENAI_TOKEN, or ESTIMATOR=fake to try the app without a model")
 		}
 		return estimate.Fake{Delay: 1500 * time.Millisecond}, nil
 	default:
-		return nil, fmt.Errorf("unknown ESTIMATOR %q: use gemini, claude or fake", kind)
+		return nil, fmt.Errorf("unknown ESTIMATOR %q: use gemini, claude, openai or fake", kind)
 	}
 }
 
@@ -318,15 +326,29 @@ func runProbe(path, note string, devMode bool) error {
 		Photos: []estimate.Photo{{Data: photo, MIME: http.DetectContentType(photo)}},
 		Note:   note,
 	})
-	fmt.Printf("estimator: %s\nms: %d\ntokens in/out: %d/%d\nusd: %.4f\nraw:\n%s\n",
-		estimator.Name(), time.Since(started).Milliseconds(), result.Usage.Input, result.Usage.Output, result.Cost, result.Raw)
+	fmt.Printf("estimator: %s\nms: %d\ntokens in/out: %d/%d\ntokens cached/reasoning: %d/%d\nusd: %.4f\nraw:\n%s\n",
+		estimator.Name(), time.Since(started).Milliseconds(), result.Usage.Input, result.Usage.Output,
+		result.Usage.CacheRead, result.Usage.Reasoning, result.Cost, result.Raw)
 	return err
 }
 
-// newCoach writes the weekly summary's warm lines with Claude when there is
-// a key; nil falls back to fixed tips.
+func openAIKey() string {
+	if key := os.Getenv("OPENAI_TOKEN"); key != "" {
+		return key
+	}
+	return os.Getenv("OPENAI_API_KEY")
+}
+
+// newCoach follows an explicit OpenAI selection even if an Anthropic key
+// remains configured. Without a suitable key, weekly messages use fixed tips.
 func newCoach() coach.Coach {
 	key := os.Getenv("ANTHROPIC_API_KEY")
+	if os.Getenv("ESTIMATOR") == "openai" || (os.Getenv("ESTIMATOR") == "" && key == "" && openAIKey() != "") {
+		if openAIKey() == "" {
+			return nil
+		}
+		return coach.NewOpenAI(openAIKey(), os.Getenv("OPENAI_MODEL"))
+	}
 	if key == "" {
 		return nil
 	}
@@ -337,14 +359,15 @@ func newCoach() coach.Coach {
 func runCoachProbe() error {
 	c := newCoach()
 	if c == nil {
-		return errors.New("ANTHROPIC_API_KEY is not set")
+		return errors.New("no coach API key is set for the selected backend")
 	}
 	weight, change := 61.2, -0.4
-	text, cost, err := c.Motivate(context.Background(), coach.Week{
+	result, err := c.Motivate(context.Background(), coach.Week{
 		Name: "Соня", Sex: model.SexFemale, Logged: 5, Kcal: 1720, Protein: 62,
 		Target: 1800, OnTarget: 3, Weight: &weight, Change: &change,
 	})
-	fmt.Printf("usd: %.4f\n\n%s\n", cost, text)
+	fmt.Printf("usd: %.4f\ntokens in/out: %d/%d\ntokens cached/reasoning: %d/%d\n\n%s\n",
+		result.Cost, result.Usage.Input, result.Usage.Output, result.Usage.CacheRead, result.Usage.Reasoning, result.Text)
 	return err
 }
 
